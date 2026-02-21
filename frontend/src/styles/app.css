@@ -360,55 +360,42 @@ input, select {
   font-size: 12px;
 }
 
-.diagnostics-header {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.diagnostics-header select { width: 100%; }
-
-.diag-meta {
-  display: grid;
-  gap: 3px;
+.diag-summary {
   font-size: 12px;
   color: #4b5563;
   margin-bottom: 8px;
 }
 
+.diag-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .diag-logs {
   border: 1px solid var(--line);
-  background: #fff;
+  background: #0a1220;
   border-radius: 8px;
   padding: 8px;
-  max-height: 420px;
+  max-height: 520px;
   overflow: auto;
+  font-family: "IBM Plex Mono", "SF Mono", "Menlo", monospace;
 }
 
-.diag-row {
-  display: grid;
-  grid-template-columns: 130px 64px 1fr;
-  gap: 8px;
+.diag-line {
+  white-space: pre-wrap;
   font-size: 12px;
-  padding: 4px 0;
-  border-bottom: 1px dashed #dbe5f4;
+  line-height: 1.5;
+  color: #c8d6f0;
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(200, 214, 240, 0.15);
 }
 
-.diag-row:last-child { border-bottom: 0; }
-.diag-ts { color: #6b7280; }
-
-.diag-level {
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 700;
-  font-size: 10px;
-}
-
-.diag-level-info { color: #155eef; }
-.diag-level-warning { color: #b54708; }
-.diag-level-error { color: #b42318; }
-.diag-level-debug { color: #475467; }
-.diag-empty { font-size: 12px; color: #6b7280; padding: 6px 0; }
+.diag-line:last-child { border-bottom: 0; }
+.diag-level-info { color: #c8d6f0; }
+.diag-level-warning { color: #f8ba47; }
+.diag-level-error { color: #ff8f87; }
+.diag-level-debug { color: #91a6ca; }
+.diag-empty { font-size: 12px; color: #91a6ca; padding: 6px 0; }
 
 .right-drawer {
   display: grid;
