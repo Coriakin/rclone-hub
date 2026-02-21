@@ -167,7 +167,7 @@ class TransferManager:
             item.direct_attempted = True
             self._log(job, "info", f"starting {job.operation.value}: {source} -> {destination}")
 
-            direct = await self._copy_item(source, destination)
+            direct = await self._copy_item(job, source, destination)
             self._log(job, "debug", self._format_result("direct-copy", source, direct))
             if direct.returncode != 0:
                 self._log(job, "warning", f"direct copy failed for {source}, trying fallback")
@@ -210,11 +210,29 @@ class TransferManager:
         job.completed_at = self._now()
         self.db.upsert_job(job)
 
-    async def _copy_item(self, source: str, destination: str):
+    def _progress_callback(self, job: Job, source: str, stage: str):
+        last_line = ""
+
+        def callback(raw: str) -> None:
+            nonlocal last_line
+            line = " ".join(raw.strip().split())
+            if not line:
+                return
+            if line == last_line:
+                return
+            if "%" not in line and "Transferred:" not in line:
+                return
+            last_line = line
+            self._log(job, "info", f"progress [{stage}] {source} {line}")
+
+        return callback
+
+    async def _copy_item(self, job: Job, source: str, destination: str):
         entry = await asyncio.to_thread(self.client.stat, source)
+        progress = self._progress_callback(job, source, "direct")
         if entry.is_dir:
-            return await asyncio.to_thread(self.client.copy, source, destination)
-        return await asyncio.to_thread(self.client.copyto, source, destination)
+            return await asyncio.to_thread(self.client.copy, source, destination, progress)
+        return await asyncio.to_thread(self.client.copyto, source, destination, progress)
 
     async def _fallback_copy(self, job: Job, source: str, destination: str, settings: Settings) -> tuple[bool, str | None]:
         staging_root = Path(settings.staging_path)
@@ -232,18 +250,20 @@ class TransferManager:
         local_path = staging_root / uuid.uuid4().hex / self.client.path_basename(source)
         try:
             entry = await asyncio.to_thread(self.client.stat, source)
+            pull_progress = self._progress_callback(job, source, "fallback-pull")
             if entry.is_dir:
-                pull = await asyncio.to_thread(self.client.to_local_copy, source, local_path)
+                pull = await asyncio.to_thread(self.client.to_local_copy, source, local_path, pull_progress)
             else:
-                pull = await asyncio.to_thread(self.client.to_local_copyto, source, local_path)
+                pull = await asyncio.to_thread(self.client.to_local_copyto, source, local_path, pull_progress)
             self._log(job, "debug", self._format_result("fallback-pull", source, pull))
             if pull.returncode != 0:
                 return False, f"fallback download failed: {pull.stderr.strip()}"
 
+            push_progress = self._progress_callback(job, source, "fallback-push")
             if entry.is_dir:
-                push = await asyncio.to_thread(self.client.from_local_copy, local_path, destination)
+                push = await asyncio.to_thread(self.client.from_local_copy, local_path, destination, push_progress)
             else:
-                push = await asyncio.to_thread(self.client.from_local_copyto, local_path, destination)
+                push = await asyncio.to_thread(self.client.from_local_copyto, local_path, destination, push_progress)
             self._log(job, "debug", self._format_result("fallback-push", source, push))
             if push.returncode != 0:
                 return False, f"fallback upload failed: {push.stderr.strip()}"

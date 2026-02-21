@@ -9,6 +9,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import time
+from typing import Callable
 
 from app.models.schemas import Entry
 
@@ -79,6 +80,79 @@ class RcloneClient:
         result = self.run(args)
         if result.returncode != 0:
             raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+        return result
+
+    def run_with_progress(
+        self,
+        args: list[str],
+        on_progress: Callable[[str], None],
+        timeout: int | None = None,
+    ) -> CommandResult:
+        timeout = timeout if timeout is not None else self.timeout_seconds
+        cmd = [self.binary, *self.base_flags, *args]
+        start = time.monotonic()
+        self.logger.info("rclone exec start timeout=%ss cmd=%s", timeout, self._as_cmd(cmd))
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        stderr_chunks: list[str] = []
+        timed_out = False
+        deadline = time.monotonic() + timeout
+
+        try:
+            while True:
+                if time.monotonic() > deadline:
+                    timed_out = True
+                    proc.kill()
+                    break
+
+                line = proc.stderr.readline() if proc.stderr is not None else ""
+                if line:
+                    stderr_chunks.append(line)
+                    on_progress(line.rstrip())
+                    continue
+
+                if proc.poll() is not None:
+                    break
+
+                time.sleep(0.05)
+
+            remaining_err = proc.stderr.read() if proc.stderr is not None else ""
+            if remaining_err:
+                stderr_chunks.append(remaining_err)
+                for line in remaining_err.splitlines():
+                    on_progress(line.rstrip())
+
+            stdout = proc.stdout.read() if proc.stdout is not None else ""
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+
+        stderr = "".join(stderr_chunks)
+        if timed_out:
+            stderr = (stderr + f"\nTimed out after {timeout}s").strip()
+
+        result = CommandResult(
+            args=cmd,
+            returncode=124 if timed_out else proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            duration_ms=int((time.monotonic() - start) * 1000),
+            timed_out=timed_out,
+        )
+        self.logger.info(
+            "rclone exec end rc=%s duration_ms=%s stdout_len=%s stderr_len=%s",
+            result.returncode,
+            result.duration_ms,
+            len(result.stdout),
+            len(result.stderr),
+        )
         return result
 
     @staticmethod
@@ -161,10 +235,20 @@ class RcloneClient:
         _, path = self.split_remote(remote_path)
         return Path(path).name
 
-    def copy(self, source: str, destination_dir: str) -> CommandResult:
+    def copy(self, source: str, destination_dir: str, on_progress: Callable[[str], None] | None = None) -> CommandResult:
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copy", source, destination_dir, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copy", source, destination_dir, "--progress=false"])
 
-    def copyto(self, source: str, destination: str) -> CommandResult:
+    def copyto(self, source: str, destination: str, on_progress: Callable[[str], None] | None = None) -> CommandResult:
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copyto", source, destination, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copyto", source, destination, "--progress=false"])
 
     def delete_path(self, source: str) -> CommandResult:
@@ -177,16 +261,56 @@ class RcloneClient:
             return self.run(["delete", source, "--rmdirs"])
         return self.run(["deletefile", source])
 
-    def to_local_copyto(self, source_remote: str, destination_local: Path) -> CommandResult:
+    def to_local_copyto(
+        self,
+        source_remote: str,
+        destination_local: Path,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> CommandResult:
         destination_local.parent.mkdir(parents=True, exist_ok=True)
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copyto", source_remote, str(destination_local), "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copyto", source_remote, str(destination_local), "--progress=false"])
 
-    def from_local_copyto(self, source_local: Path, destination_remote: str) -> CommandResult:
+    def from_local_copyto(
+        self,
+        source_local: Path,
+        destination_remote: str,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> CommandResult:
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copyto", str(source_local), destination_remote, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copyto", str(source_local), destination_remote, "--progress=false"])
 
-    def to_local_copy(self, source_remote: str, destination_local_dir: Path) -> CommandResult:
+    def to_local_copy(
+        self,
+        source_remote: str,
+        destination_local_dir: Path,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> CommandResult:
         destination_local_dir.mkdir(parents=True, exist_ok=True)
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copy", source_remote, str(destination_local_dir), "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copy", source_remote, str(destination_local_dir), "--progress=false"])
 
-    def from_local_copy(self, source_local_dir: Path, destination_remote_dir: str) -> CommandResult:
+    def from_local_copy(
+        self,
+        source_local_dir: Path,
+        destination_remote_dir: str,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> CommandResult:
+        if on_progress is not None:
+            return self.run_with_progress(
+                ["copy", str(source_local_dir), destination_remote_dir, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
+                on_progress=on_progress,
+            )
         return self.run(["copy", str(source_local_dir), destination_remote_dir, "--progress=false"])
