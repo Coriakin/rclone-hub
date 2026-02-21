@@ -367,6 +367,31 @@ input, select {
   background: #fff;
 }
 
+.queue-route {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.queue-route-direct {
+  background: #e8f2ff;
+  color: #1d4f9d;
+}
+
+.queue-route-fallback {
+  background: #fff4df;
+  color: #8a5a00;
+}
+
+.queue-route-pending {
+  background: #eef2f8;
+  color: #475467;
+}
+
 .queue-top {
   display: flex;
   justify-content: space-between;
