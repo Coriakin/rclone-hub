@@ -66,6 +66,18 @@ export function App() {
     return () => clearInterval(id);
   }, []);
 
+  async function waitForJobTerminal(jobId: string, timeoutMs = 30000): Promise<Job | null> {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const job = await api.job(jobId);
+      if (job.status !== 'queued' && job.status !== 'running') {
+        return job;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    return null;
+  }
+
   async function loadPane(path: string, paneId: string) {
     setPanes((prev) => prev.map((p) => p.id === paneId ? { ...p, loading: true, error: undefined } : p));
     try {
@@ -238,8 +250,11 @@ export function App() {
         onConfirm={async () => {
           const pane = panes.find((p) => p.id === confirmDelete.paneId);
           if (!pane) return;
-          await api.del(Array.from(pane.selected));
+          const deleteJob = await api.del(Array.from(pane.selected));
+          await waitForJobTerminal(deleteJob.id);
           setConfirmDelete({ open: false, paneId: null });
+          setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, selected: new Set<string>() } : p));
+          await loadPane(pane.currentPath, pane.id);
           await refreshJobs();
         }}
       />

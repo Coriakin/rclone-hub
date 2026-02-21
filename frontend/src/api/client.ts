@@ -49,6 +49,7 @@ export const api = {
   remotes: () => json<{ remotes: string[] }>(`${API_BASE}/remotes`),
   list: (remotePath: string) => json<{ items: Entry[] }>(`${API_BASE}/list?remote_path=${encodeURIComponent(remotePath)}&recursive=false`),
   jobs: () => json<{ jobs: Job[] }>(`${API_BASE}/jobs`),
+  job: (jobId: string) => json<Job>(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`),
   copy: (sources: string[], destination_dir: string) =>
     json<Job>(`${API_BASE}/jobs/copy`, {
       method: 'POST',
