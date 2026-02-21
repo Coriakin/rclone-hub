@@ -13,6 +13,7 @@ type Props = {
   onToggleSelectionMode: () => void;
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
+  onOpenInNewPane: (path: string) => void;
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onDeleteSelected: () => void;
@@ -31,6 +32,7 @@ export function Pane({
   onToggleSelectionMode,
   onToggleSelect,
   onFileClick,
+  onOpenInNewPane,
   onCopySelected,
   onMoveSelected,
   onDeleteSelected,
@@ -92,6 +94,7 @@ export function Pane({
         onToggleSelect={onToggleSelect}
         onFileClick={onFileClick}
         onNavigate={onNavigate}
+        onOpenInNewPane={onOpenInNewPane}
         onDropTarget={onDropTarget}
       />
     </section>

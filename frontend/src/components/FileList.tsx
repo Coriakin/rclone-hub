@@ -9,10 +9,21 @@ type Props = {
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onNavigate: (path: string) => void;
+  onOpenInNewPane: (path: string) => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
 };
 
-export function FileList({ paneId, entries, selectionMode, selected, onToggleSelect, onFileClick, onNavigate, onDropTarget }: Props) {
+export function FileList({
+  paneId,
+  entries,
+  selectionMode,
+  selected,
+  onToggleSelect,
+  onFileClick,
+  onNavigate,
+  onOpenInNewPane,
+  onDropTarget,
+}: Props) {
   return (
     <div className="file-list" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
       e.preventDefault();
@@ -42,6 +53,11 @@ export function FileList({ paneId, entries, selectionMode, selected, onToggleSel
             if (entry.is_dir) {
               e.preventDefault();
             }
+          }}
+          onContextMenu={(e) => {
+            if (!entry.is_dir) return;
+            e.preventDefault();
+            onOpenInNewPane(entry.path);
           }}
         >
           {selectionMode && (

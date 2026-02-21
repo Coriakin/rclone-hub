@@ -164,6 +164,13 @@ export function App() {
     loadPane(path, pane.id).catch(console.error);
   }
 
+  function openPathInNewPane(path: string) {
+    const pane = newPane(path);
+    setPanes((prev) => [...prev, pane]);
+    setActivePaneId(pane.id);
+    loadPane(path, pane.id).catch(console.error);
+  }
+
   function closePane(paneId: string) {
     setPanes((prev) => prev.filter((p) => p.id !== paneId));
     if (activePaneId === paneId) {
@@ -234,6 +241,7 @@ export function App() {
                 if (next.has(path)) next.delete(path); else next.add(path);
                 return { ...p, selected: next };
               }))}
+              onOpenInNewPane={(path) => openPathInNewPane(path)}
               onCopySelected={() => transferSelected(pane.id, false).catch(console.error)}
               onMoveSelected={() => transferSelected(pane.id, true).catch(console.error)}
               onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id })}
