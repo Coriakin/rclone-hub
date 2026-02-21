@@ -16,7 +16,7 @@ type Props = {
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onDeleteSelected: () => void;
-  onDropTarget: (targetPath: string | null, sources: string[], move: boolean) => void;
+  onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
   onClose: () => void;
 };
 
@@ -75,6 +75,7 @@ export function Pane({
       {pane.loading && <div className="pane-status">Loading...</div>}
       {pane.error && <div className="pane-error">{pane.error}</div>}
       <FileList
+        paneId={pane.id}
         entries={pane.items}
         selectionMode={pane.mode === 'select'}
         selected={pane.selected}

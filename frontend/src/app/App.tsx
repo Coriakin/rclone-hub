@@ -122,12 +122,23 @@ export function App() {
     await refreshJobs();
   }
 
-  async function handleDrop(sourcePaneId: string, targetPath: string | null, sources: string[], move: boolean) {
-    const pane = panes.find((p) => p.id === sourcePaneId);
+  async function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], move: boolean, dragSourcePaneId?: string) {
+    const pane = panes.find((p) => p.id === targetPaneId);
     if (!pane) return;
+
+    const samePaneDrop = dragSourcePaneId === targetPaneId;
+    if (samePaneDrop && !targetPath) {
+      return;
+    }
+
     const dest = targetPath ?? pane.currentPath;
     if (!dest) return;
-    if (move) await api.move(sources, dest);
+    if (samePaneDrop && sources.includes(dest)) {
+      return;
+    }
+
+    const shouldMove = samePaneDrop && targetPath ? true : move;
+    if (shouldMove) await api.move(sources, dest);
     else await api.copy(sources, dest);
     await refreshJobs();
   }
@@ -141,11 +152,10 @@ export function App() {
     }
   }
 
-  function addPaneWithPath(path: string) {
-    const reusable = panes.find((pane) => !pane.currentPath && pane.history.length === 0);
-    if (reusable) {
-      setActivePaneId(reusable.id);
-      navigatePane(reusable.id, path);
+  function openRemoteInActivePane(path: string) {
+    const active = panes.find((pane) => pane.id === activePaneId);
+    if (active) {
+      navigatePane(active.id, path);
       return;
     }
     const pane = newPane(path);
@@ -173,7 +183,7 @@ export function App() {
         <button onClick={addPane}>Add pane</button>
         <div className="remotes">
           {remotes.map((remote) => (
-            <button key={remote} className="remote-btn" onClick={() => addPaneWithPath(remote)}>
+            <button key={remote} className="remote-btn" onClick={() => openRemoteInActivePane(remote)}>
               {remote}
             </button>
           ))}
@@ -227,7 +237,8 @@ export function App() {
               onCopySelected={() => transferSelected(pane.id, false).catch(console.error)}
               onMoveSelected={() => transferSelected(pane.id, true).catch(console.error)}
               onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id })}
-              onDropTarget={(targetPath, sources, move) => handleDrop(pane.id, targetPath, sources, move).catch(console.error)}
+              onDropTarget={(targetPath, sources, move, sourcePaneId) =>
+                handleDrop(pane.id, targetPath, sources, move, sourcePaneId).catch(console.error)}
               onClose={() => closePane(pane.id)}
             />
           ))}
