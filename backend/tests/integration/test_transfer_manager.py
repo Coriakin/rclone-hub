@@ -1,7 +1,8 @@
 import asyncio
+from contextlib import suppress
 
 from app.db.database import Database
-from app.models.schemas import DeleteRequest, JobOperation, TransferRequest
+from app.models.schemas import DeleteRequest, JobOperation, JobStatus, TransferRequest
 from app.services.transfers import TransferManager
 
 
@@ -73,3 +74,23 @@ async def test_delete_job(tmp_path):
     job = manager.submit_delete(DeleteRequest(sources=["a:tmp"]))
     await manager._run_delete(job)
     assert manager.get_job(job.id).status.value == "success"
+
+
+async def test_start_marks_running_jobs_interrupted(tmp_path):
+    db = Database(db_path=tmp_path / "test.db")
+    initial = TransferManager(db=db, client=FakeRclone())
+    job = initial.submit_delete(DeleteRequest(sources=["a:tmp"]))
+    job.status = JobStatus.running
+    db.upsert_job(job)
+
+    manager = TransferManager(db=db, client=FakeRclone())
+    manager.start()
+
+    reloaded = manager.get_job(job.id)
+    assert reloaded is not None
+    assert reloaded.status == JobStatus.interrupted
+
+    if manager.worker_task:
+        manager.worker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await manager.worker_task
