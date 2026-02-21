@@ -22,27 +22,33 @@ class FakeRclone:
     def join_remote(self, destination, base):
         return f"{destination.rstrip('/')}/{base}"
 
-    def copy(self, source, destination, on_progress=None):
+    def copy(self, source, destination, on_progress=None, should_cancel=None):
         if self.first_copy:
             self.first_copy = False
             return FakeResult(returncode=1, stderr="failed")
+        if should_cancel and should_cancel():
+            return FakeResult(returncode=130, stderr="Cancelled by user")
         if on_progress:
             on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)
 
-    def copyto(self, source, destination, on_progress=None):
-        return self.copy(source, destination, on_progress)
+    def copyto(self, source, destination, on_progress=None, should_cancel=None):
+        return self.copy(source, destination, on_progress, should_cancel)
 
     def stat(self, source):
         from app.models.schemas import Entry
         return Entry(name="f", path=source, is_dir=False, size=1, hashes={"md5": "a"})
 
-    def to_local_copyto(self, source, destination, on_progress=None):
+    def to_local_copyto(self, source, destination, on_progress=None, should_cancel=None):
+        if should_cancel and should_cancel():
+            return FakeResult(returncode=130, stderr="Cancelled by user")
         if on_progress:
             on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)
 
-    def from_local_copyto(self, source, destination, on_progress=None):
+    def from_local_copyto(self, source, destination, on_progress=None, should_cancel=None):
+        if should_cancel and should_cancel():
+            return FakeResult(returncode=130, stderr="Cancelled by user")
         if on_progress:
             on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)

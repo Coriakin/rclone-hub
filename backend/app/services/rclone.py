@@ -86,6 +86,7 @@ class RcloneClient:
         self,
         args: list[str],
         on_progress: Callable[[str], None],
+        should_cancel: Callable[[], bool] | None = None,
         timeout: int | None = None,
     ) -> CommandResult:
         timeout = timeout if timeout is not None else self.timeout_seconds
@@ -102,10 +103,16 @@ class RcloneClient:
 
         stderr_chunks: list[str] = []
         timed_out = False
+        cancelled = False
         deadline = time.monotonic() + timeout
 
         try:
             while True:
+                if should_cancel is not None and should_cancel():
+                    cancelled = True
+                    proc.kill()
+                    break
+
                 if time.monotonic() > deadline:
                     timed_out = True
                     proc.kill()
@@ -137,10 +144,12 @@ class RcloneClient:
         stderr = "".join(stderr_chunks)
         if timed_out:
             stderr = (stderr + f"\nTimed out after {timeout}s").strip()
+        if cancelled:
+            stderr = (stderr + "\nCancelled by user").strip()
 
         result = CommandResult(
             args=cmd,
-            returncode=124 if timed_out else proc.returncode,
+            returncode=130 if cancelled else (124 if timed_out else proc.returncode),
             stdout=stdout,
             stderr=stderr,
             duration_ms=int((time.monotonic() - start) * 1000),
@@ -235,19 +244,33 @@ class RcloneClient:
         _, path = self.split_remote(remote_path)
         return Path(path).name
 
-    def copy(self, source: str, destination_dir: str, on_progress: Callable[[str], None] | None = None) -> CommandResult:
+    def copy(
+        self,
+        source: str,
+        destination_dir: str,
+        on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> CommandResult:
         if on_progress is not None:
             return self.run_with_progress(
                 ["copy", source, destination_dir, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copy", source, destination_dir, "--progress=false"])
 
-    def copyto(self, source: str, destination: str, on_progress: Callable[[str], None] | None = None) -> CommandResult:
+    def copyto(
+        self,
+        source: str,
+        destination: str,
+        on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> CommandResult:
         if on_progress is not None:
             return self.run_with_progress(
                 ["copyto", source, destination, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copyto", source, destination, "--progress=false"])
 
@@ -266,12 +289,14 @@ class RcloneClient:
         source_remote: str,
         destination_local: Path,
         on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> CommandResult:
         destination_local.parent.mkdir(parents=True, exist_ok=True)
         if on_progress is not None:
             return self.run_with_progress(
                 ["copyto", source_remote, str(destination_local), "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copyto", source_remote, str(destination_local), "--progress=false"])
 
@@ -280,11 +305,13 @@ class RcloneClient:
         source_local: Path,
         destination_remote: str,
         on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> CommandResult:
         if on_progress is not None:
             return self.run_with_progress(
                 ["copyto", str(source_local), destination_remote, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copyto", str(source_local), destination_remote, "--progress=false"])
 
@@ -293,12 +320,14 @@ class RcloneClient:
         source_remote: str,
         destination_local_dir: Path,
         on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> CommandResult:
         destination_local_dir.mkdir(parents=True, exist_ok=True)
         if on_progress is not None:
             return self.run_with_progress(
                 ["copy", source_remote, str(destination_local_dir), "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copy", source_remote, str(destination_local_dir), "--progress=false"])
 
@@ -307,10 +336,12 @@ class RcloneClient:
         source_local_dir: Path,
         destination_remote_dir: str,
         on_progress: Callable[[str], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> CommandResult:
         if on_progress is not None:
             return self.run_with_progress(
                 ["copy", str(source_local_dir), destination_remote_dir, "--stats=1s", "--stats-one-line", "--stats-log-level", "NOTICE"],
                 on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         return self.run(["copy", str(source_local_dir), destination_remote_dir, "--progress=false"])
