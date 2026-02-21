@@ -12,6 +12,7 @@ type Props = {
   onForward: () => void;
   onToggleSelectionMode: () => void;
   onToggleSelect: (path: string) => void;
+  onFileClick: (path: string) => void;
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onDeleteSelected: () => void;
@@ -29,41 +30,56 @@ export function Pane({
   onForward,
   onToggleSelectionMode,
   onToggleSelect,
+  onFileClick,
   onCopySelected,
   onMoveSelected,
   onDeleteSelected,
   onDropTarget,
   onClose,
 }: Props) {
+  const hasSelection = pane.selected.size > 0;
+
   return (
     <section className={`pane ${isActive ? 'active' : ''}`} onClick={onActivate}>
       <div className="pane-toolbar">
-        <button onClick={onBack} disabled={pane.historyIndex <= 0}>Back</button>
-        <button onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1}>Forward</button>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const data = new FormData(e.currentTarget);
-          onPathSubmit(String(data.get('path') || pane.currentPath));
-        }}>
-          <input name="path" defaultValue={pane.currentPath} />
-        </form>
-        <button onClick={onToggleSelectionMode}>{pane.selectionMode ? 'Selection On' : 'Select'}</button>
-        {pane.selectionMode && (
-          <>
-            <button onClick={onCopySelected}>Copy</button>
-            <button onClick={onMoveSelected}>Move</button>
-            <button onClick={onDeleteSelected}>Delete</button>
-          </>
-        )}
-        <button onClick={onClose}>Close</button>
+        <div className="pane-toolbar-main">
+          <button onClick={onBack} disabled={pane.historyIndex <= 0}>Back</button>
+          <button onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1}>Forward</button>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const data = new FormData(e.currentTarget);
+            onPathSubmit(String(data.get('path') || pane.currentPath));
+          }}>
+            <input name="path" defaultValue={pane.currentPath} />
+          </form>
+          <button className="ghost-btn" onClick={onClose}>Close</button>
+        </div>
+        <div className="pane-toolbar-modes">
+          <div className="mode-group" role="group" aria-label="Pane mode">
+            <button className={pane.mode === 'browse' ? 'mode-btn active' : 'mode-btn'} onClick={() => pane.mode === 'select' && onToggleSelectionMode()}>
+              Browse
+            </button>
+            <button className={pane.mode === 'select' ? 'mode-btn active' : 'mode-btn'} onClick={() => pane.mode === 'browse' && onToggleSelectionMode()}>
+              Select
+            </button>
+          </div>
+          {pane.mode === 'select' && hasSelection && (
+            <div className="ops-group" role="group" aria-label="Selection operations">
+              <button onClick={onCopySelected}>Copy</button>
+              <button onClick={onMoveSelected}>Move</button>
+              <button className="danger-btn" onClick={onDeleteSelected}>Delete</button>
+            </div>
+          )}
+        </div>
       </div>
       {pane.loading && <div className="pane-status">Loading...</div>}
       {pane.error && <div className="pane-error">{pane.error}</div>}
       <FileList
         entries={pane.items}
-        selectionMode={pane.selectionMode}
+        selectionMode={pane.mode === 'select'}
         selected={pane.selected}
         onToggleSelect={onToggleSelect}
+        onFileClick={onFileClick}
         onNavigate={onNavigate}
         onDropTarget={onDropTarget}
       />
