@@ -295,6 +295,7 @@ export function App() {
               onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
               onActivate={() => setActivePaneId(pane.id)}
               onPathSubmit={(path) => navigatePane(pane.id, path)}
+              onRefresh={() => pane.currentPath && loadPane(pane.currentPath, pane.id).catch(console.error)}
               onNavigate={(path) => navigatePane(pane.id, path)}
               onBack={() => {
                 if (pane.historyIndex <= 0) return;
