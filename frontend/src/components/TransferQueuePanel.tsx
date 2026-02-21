@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Job } from '../api/client';
 
 type Props = {
@@ -7,11 +7,30 @@ type Props = {
 };
 
 export function TransferQueuePanel({ jobs, onCancel }: Props) {
+  const [showHistory, setShowHistory] = useState(false);
+  const visibleJobs = useMemo(() => {
+    if (showHistory) return jobs;
+    return jobs.filter((job) => job.status === 'queued' || job.status === 'running');
+  }, [jobs, showHistory]);
+
   return (
     <aside className="queue-panel">
-      <h3>Transfer Queue</h3>
+      <div className="panel-head">
+        <h3>Transfer Queue</h3>
+        <label className="panel-toggle">
+          <input
+            type="checkbox"
+            checked={showHistory}
+            onChange={(e) => setShowHistory(e.target.checked)}
+          />
+          Show history
+        </label>
+      </div>
       <div className="queue-items">
-        {jobs.map((job) => (
+        {visibleJobs.length === 0 && (
+          <div className="diag-empty">No active transfers.</div>
+        )}
+        {visibleJobs.map((job) => (
           <div key={job.id} className="queue-item">
             <div className="queue-top">
               <span>{job.operation.toUpperCase()}</span>

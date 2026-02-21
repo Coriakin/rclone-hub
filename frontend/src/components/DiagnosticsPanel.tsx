@@ -12,31 +12,46 @@ function prettyTs(value: string): string {
 }
 
 export function DiagnosticsPanel({ jobs }: Props) {
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
+  const visibleJobs = useMemo(() => {
+    if (showHistory) return jobs;
+    return jobs.filter((job) => job.status === 'queued' || job.status === 'running');
+  }, [jobs, showHistory]);
 
   useEffect(() => {
-    if (!jobs.length) {
+    if (!visibleJobs.length) {
       setSelectedJobId('');
       return;
     }
-    const exists = jobs.some((job) => job.id === selectedJobId);
+    const exists = visibleJobs.some((job) => job.id === selectedJobId);
     if (!exists) {
-      setSelectedJobId(jobs[0].id);
+      setSelectedJobId(visibleJobs[0].id);
     }
-  }, [jobs, selectedJobId]);
+  }, [visibleJobs, selectedJobId]);
 
-  const selected = useMemo(() => jobs.find((job) => job.id === selectedJobId), [jobs, selectedJobId]);
+  const selected = useMemo(() => visibleJobs.find((job) => job.id === selectedJobId), [visibleJobs, selectedJobId]);
 
   return (
     <aside className="diagnostics-panel">
       <div className="diagnostics-header">
-        <h3>Diagnostics</h3>
+        <div className="panel-head">
+          <h3>Diagnostics</h3>
+          <label className="panel-toggle">
+            <input
+              type="checkbox"
+              checked={showHistory}
+              onChange={(e) => setShowHistory(e.target.checked)}
+            />
+            Show history
+          </label>
+        </div>
         <select
           value={selectedJobId}
           onChange={(e) => setSelectedJobId(e.target.value)}
-          disabled={!jobs.length}
+          disabled={!visibleJobs.length}
         >
-          {jobs.map((job) => (
+          {visibleJobs.map((job) => (
             <option key={job.id} value={job.id}>
               {job.operation.toUpperCase()} {job.id.slice(0, 8)} {job.status}
             </option>
@@ -44,7 +59,7 @@ export function DiagnosticsPanel({ jobs }: Props) {
         </select>
       </div>
 
-      {!selected && <div className="diag-empty">No jobs yet. Run a copy/move/delete to see logs.</div>}
+      {!selected && <div className="diag-empty">No active diagnostics. Enable history to inspect past jobs.</div>}
 
       {selected && (
         <>
