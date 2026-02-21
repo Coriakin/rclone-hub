@@ -64,7 +64,7 @@ export function Pane({
               onChange={(e) => setPathDraft(e.target.value)}
             />
           </form>
-          <button className="ghost-btn" onClick={onClose}>Close</button>
+          <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane">X</button>
         </div>
         <div className="pane-toolbar-modes">
           <div className="mode-group" role="group" aria-label="Pane mode">
