@@ -5,8 +5,41 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
-BACKEND_HOST="127.0.0.1"
-FRONTEND_HOST="127.0.0.1"
+DOTENV_FILE="${DOTENV_FILE:-$ROOT_DIR/.env}"
+
+load_dotenv() {
+  local env_file="$1"
+  if [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  # Preserve explicit shell-provided overrides for these keys.
+  local shell_backend_host="${BACKEND_HOST-}"
+  local shell_frontend_host="${FRONTEND_HOST-}"
+  local shell_backend_port="${BACKEND_PORT-}"
+  local shell_frontend_port="${FRONTEND_PORT-}"
+  local had_backend_host="${BACKEND_HOST+x}"
+  local had_frontend_host="${FRONTEND_HOST+x}"
+  local had_backend_port="${BACKEND_PORT+x}"
+  local had_frontend_port="${FRONTEND_PORT+x}"
+
+  set -a
+  # shellcheck disable=SC1090
+  . "$env_file"
+  set +a
+
+  if [ -n "$had_backend_host" ]; then BACKEND_HOST="$shell_backend_host"; fi
+  if [ -n "$had_frontend_host" ]; then FRONTEND_HOST="$shell_frontend_host"; fi
+  if [ -n "$had_backend_port" ]; then BACKEND_PORT="$shell_backend_port"; fi
+  if [ -n "$had_frontend_port" ]; then FRONTEND_PORT="$shell_frontend_port"; fi
+}
+
+load_dotenv "$DOTENV_FILE"
+
+BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
+BACKEND_PORT_CONFIGURED="${BACKEND_PORT-}"
+FRONTEND_PORT_CONFIGURED="${FRONTEND_PORT-}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 MAX_PORT_TRIES=30
@@ -76,20 +109,37 @@ trap cleanup EXIT INT TERM
 ensure_backend_env
 ensure_frontend_env
 
-FREE_BACKEND_PORT="$(find_free_port "$BACKEND_PORT")" || {
-  echo "[dev] Could not find free backend port starting at $BACKEND_PORT"
-  exit 1
-}
-FREE_FRONTEND_PORT="$(find_free_port "$FRONTEND_PORT")" || {
-  echo "[dev] Could not find free frontend port starting at $FRONTEND_PORT"
-  exit 1
-}
+FREE_BACKEND_PORT="$BACKEND_PORT"
+FREE_FRONTEND_PORT="$FRONTEND_PORT"
 
-if [ "$FREE_BACKEND_PORT" != "$BACKEND_PORT" ]; then
-  echo "[dev] Backend port $BACKEND_PORT in use, using $FREE_BACKEND_PORT"
+if port_in_use "$BACKEND_PORT"; then
+  if [ -n "$BACKEND_PORT_CONFIGURED" ]; then
+    echo "[dev] BACKEND_PORT is set to $BACKEND_PORT but that port is already in use."
+    echo "[dev] Stop the existing process or choose a different BACKEND_PORT in .env."
+    exit 1
+  fi
+  FREE_BACKEND_PORT="$(find_free_port "$BACKEND_PORT")" || {
+    echo "[dev] Could not find free backend port starting at $BACKEND_PORT"
+    exit 1
+  }
+  if [ "$FREE_BACKEND_PORT" != "$BACKEND_PORT" ]; then
+    echo "[dev] Backend port $BACKEND_PORT in use, using $FREE_BACKEND_PORT"
+  fi
 fi
-if [ "$FREE_FRONTEND_PORT" != "$FRONTEND_PORT" ]; then
-  echo "[dev] Frontend port $FRONTEND_PORT in use, using $FREE_FRONTEND_PORT"
+
+if port_in_use "$FRONTEND_PORT"; then
+  if [ -n "$FRONTEND_PORT_CONFIGURED" ]; then
+    echo "[dev] FRONTEND_PORT is set to $FRONTEND_PORT but that port is already in use."
+    echo "[dev] Stop the existing process or choose a different FRONTEND_PORT in .env."
+    exit 1
+  fi
+  FREE_FRONTEND_PORT="$(find_free_port "$FRONTEND_PORT")" || {
+    echo "[dev] Could not find free frontend port starting at $FRONTEND_PORT"
+    exit 1
+  }
+  if [ "$FREE_FRONTEND_PORT" != "$FRONTEND_PORT" ]; then
+    echo "[dev] Frontend port $FRONTEND_PORT in use, using $FREE_FRONTEND_PORT"
+  fi
 fi
 
 echo "[dev] Starting backend on http://$BACKEND_HOST:$FREE_BACKEND_PORT"

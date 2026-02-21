@@ -20,7 +20,7 @@ cd /Users/andreas/code/rclone-hub
 What it does:
 - Creates backend virtualenv if missing.
 - Installs backend/frontend deps if missing.
-- Auto-picks free ports if `8000` or `5173` are already in use.
+- Auto-picks free ports if default `8000` or `5173` are already in use.
 - Wires frontend to the chosen backend API automatically.
 
 Optional overrides:
@@ -28,6 +28,21 @@ Optional overrides:
 ```bash
 BACKEND_PORT=8100 FRONTEND_PORT=5174 ./scripts/dev.sh
 ```
+
+Or configure defaults in a root `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit:
+
+```env
+BACKEND_PORT=8100
+FRONTEND_PORT=5174
+```
+
+When ports are set in `.env`, `./scripts/dev.sh` treats them as fixed and exits with a clear error if they are already in use.
 
 ## Backend quickstart
 
