@@ -6,11 +6,12 @@ type Props = {
   selectionMode: boolean;
   selected: Set<string>;
   onToggleSelect: (path: string) => void;
+  onFileClick: (path: string) => void;
   onNavigate: (path: string) => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean) => void;
 };
 
-export function FileList({ entries, selectionMode, selected, onToggleSelect, onNavigate, onDropTarget }: Props) {
+export function FileList({ entries, selectionMode, selected, onToggleSelect, onFileClick, onNavigate, onDropTarget }: Props) {
   return (
     <div className="file-list" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
       e.preventDefault();
@@ -22,7 +23,7 @@ export function FileList({ entries, selectionMode, selected, onToggleSelect, onN
       {entries.map((entry) => (
         <div
           key={entry.path}
-          className="file-row"
+          className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''}`}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData('application/x-rclone-paths', JSON.stringify({ sources: [entry.path] }));
@@ -45,13 +46,15 @@ export function FileList({ entries, selectionMode, selected, onToggleSelect, onN
           {selectionMode && (
             <input
               type="checkbox"
+              className="file-checkbox"
               checked={selected.has(entry.path)}
               onChange={() => onToggleSelect(entry.path)}
             />
           )}
-          <button className="entry-btn" onClick={() => entry.is_dir && onNavigate(entry.path)}>
-            <span>{entry.is_dir ? '[DIR]' : '[FILE]'}</span>
-            <span>{entry.name || entry.path}</span>
+          <button className="entry-btn" onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}>
+            <span className={`entry-icon ${entry.is_dir ? 'dir' : 'file'}`} aria-hidden="true" />
+            <span className="entry-name">{entry.name || entry.path}</span>
+            <span className="entry-kind">{entry.is_dir ? 'Folder' : 'File'}</span>
           </button>
         </div>
       ))}

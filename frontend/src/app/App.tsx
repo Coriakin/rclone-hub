@@ -17,7 +17,7 @@ function newPane(path = ''): PaneState {
     history: path ? [path] : [],
     historyIndex: path ? 0 : -1,
     items: [],
-    selectionMode: false,
+    mode: 'browse',
     selected: new Set<string>(),
     loading: false,
   };
@@ -204,9 +204,22 @@ export function App() {
                 setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
                 loadPane(path, pane.id).catch(console.error);
               }}
-              onToggleSelectionMode={() => setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, selectionMode: !p.selectionMode, selected: new Set<string>() } : p))}
+              onToggleSelectionMode={() => setPanes((prev) => prev.map((p) => p.id === pane.id ? {
+                ...p,
+                mode: p.mode === 'select' ? 'browse' : 'select',
+                selected: new Set<string>(),
+              } : p))}
               onToggleSelect={(path) => setPanes((prev) => prev.map((p) => {
                 if (p.id !== pane.id) return p;
+                const next = new Set(p.selected);
+                if (next.has(path)) next.delete(path); else next.add(path);
+                return { ...p, selected: next };
+              }))}
+              onFileClick={(path) => setPanes((prev) => prev.map((p) => {
+                if (p.id !== pane.id) return p;
+                if (p.mode === 'browse') {
+                  return { ...p, mode: 'select', selected: new Set<string>([path]) };
+                }
                 const next = new Set(p.selected);
                 if (next.has(path)) next.delete(path); else next.add(path);
                 return { ...p, selected: next };
