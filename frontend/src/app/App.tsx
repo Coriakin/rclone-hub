@@ -24,6 +24,11 @@ function newPane(path = ''): PaneState {
 }
 
 export function App() {
+  const [openTabs, setOpenTabs] = useState<{ queue: boolean; settings: boolean; diagnostics: boolean }>({
+    queue: true,
+    settings: false,
+    diagnostics: true,
+  });
   const [remotes, setRemotes] = useState<string[]>([]);
   const [panes, setPanes] = useState<PaneState[]>([newPane('')]);
   const [activePaneId, setActivePaneId] = useState<string>('pane-1');
@@ -145,6 +150,10 @@ export function App() {
     }
   }
 
+  function toggleRightTab(tab: 'queue' | 'settings' | 'diagnostics') {
+    setOpenTabs((prev) => ({ ...prev, [tab]: !prev[tab] }));
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -160,7 +169,7 @@ export function App() {
       </header>
 
       <main className="main-grid">
-        <section className="panes-row">
+        <section className={`panes-row ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'with-drawer' : ''}`}>
           {panes.map((pane) => (
             <Pane
               key={pane.id}
@@ -198,13 +207,27 @@ export function App() {
             />
           ))}
         </section>
-
-        <TransferQueuePanel jobs={jobs} onCancel={(id) => api.cancel(id).then(refreshJobs).catch(console.error)} />
-        {settings && <SettingsPanel initial={settings} onSave={async (s) => {
-          await api.saveSettings(s);
-          await loadSettings();
-        }} />}
-        <DiagnosticsPanel jobs={jobs} />
+        <aside className={`right-drawer ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'open' : ''}`}>
+          <div className="drawer-tabs">
+            <button className={openTabs.queue ? 'active' : ''} onClick={() => toggleRightTab('queue')}>Queue</button>
+            <button className={openTabs.settings ? 'active' : ''} onClick={() => toggleRightTab('settings')}>Settings</button>
+            <button className={openTabs.diagnostics ? 'active' : ''} onClick={() => toggleRightTab('diagnostics')}>Diagnostics</button>
+          </div>
+          {(openTabs.queue || openTabs.settings || openTabs.diagnostics) && (
+            <div className="drawer-content">
+              {openTabs.queue && (
+                <TransferQueuePanel jobs={jobs} onCancel={(id) => api.cancel(id).then(refreshJobs).catch(console.error)} />
+              )}
+              {openTabs.settings && settings && (
+                <SettingsPanel initial={settings} onSave={async (s) => {
+                  await api.saveSettings(s);
+                  await loadSettings();
+                }} />
+              )}
+              {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} />}
+            </div>
+          )}
+        </aside>
       </main>
 
       <ConfirmDialog

@@ -30,8 +30,9 @@ button, input { font: inherit; }
   color: var(--accent);
 }
 
-.main-grid { display: grid; grid-template-columns: 1fr 280px 280px 360px; gap: 12px; padding: 12px; height: calc(100vh - 56px); }
-.panes-row { display: flex; gap: 10px; overflow-x: auto; }
+.main-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 12px; height: calc(100vh - 56px); }
+.panes-row { display: flex; gap: 10px; overflow-x: auto; min-width: 0; }
+.panes-row.with-drawer { padding-right: 4px; }
 .pane { min-width: 360px; width: 420px; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; display: grid; grid-template-rows: auto auto 1fr; }
 .pane.active { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .pane-toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; border-bottom: 1px solid var(--line); }
@@ -74,11 +75,68 @@ button, input { font: inherit; }
 .diag-level-debug { color: #475467; }
 .diag-empty { font-size: 12px; color: #6b7280; padding: 6px 0; }
 
+.right-drawer {
+  display: grid;
+  grid-template-columns: 44px;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 0;
+}
+.right-drawer.open {
+  grid-template-columns: 44px minmax(280px, 360px);
+}
+.drawer-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.drawer-tabs button {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: #4b5563;
+  padding: 8px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  height: 100px;
+}
+.drawer-tabs button.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: #f4f8ff;
+}
+.drawer-content {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.drawer-content .queue-panel,
+.drawer-content .settings-panel,
+.drawer-content .diagnostics-panel {
+  height: auto;
+}
+
 .dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.28); display: grid; place-items: center; }
 .dialog { width: min(480px, 92vw); border-radius: 10px; background: white; padding: 16px; border: 1px solid var(--line); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .danger { background: var(--danger); color: white; border: 0; border-radius: 6px; padding: 6px 10px; }
 
 @media (max-width: 1280px) {
-  .main-grid { grid-template-columns: 1fr; grid-template-rows: minmax(380px, 1fr) auto auto; }
+  .main-grid { grid-template-columns: 1fr; grid-template-rows: minmax(380px, 1fr) auto; }
+  .right-drawer { grid-template-columns: 1fr; }
+  .right-drawer.open { grid-template-columns: 1fr; }
+  .drawer-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .drawer-tabs button {
+    writing-mode: horizontal-tb;
+    transform: none;
+    height: auto;
+    white-space: nowrap;
+  }
 }
