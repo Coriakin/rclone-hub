@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, type Job } from '../api/client';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { Pane } from '../components/Pane';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TransferQueuePanel } from '../components/TransferQueuePanel';
@@ -197,6 +198,7 @@ export function App() {
           await api.saveSettings(s);
           await loadSettings();
         }} />}
+        <DiagnosticsPanel jobs={jobs} />
       </main>
 
       <ConfirmDialog
