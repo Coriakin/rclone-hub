@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { PaneState } from '../state/types';
 import { FileList } from './FileList';
 
@@ -38,6 +38,11 @@ export function Pane({
   onClose,
 }: Props) {
   const hasSelection = pane.selected.size > 0;
+  const [pathDraft, setPathDraft] = useState(pane.currentPath);
+
+  useEffect(() => {
+    setPathDraft(pane.currentPath);
+  }, [pane.currentPath]);
 
   return (
     <section className={`pane ${isActive ? 'active' : ''}`} onClick={onActivate}>
@@ -47,10 +52,15 @@ export function Pane({
           <button onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1}>Forward</button>
           <form onSubmit={(e) => {
             e.preventDefault();
-            const data = new FormData(e.currentTarget);
-            onPathSubmit(String(data.get('path') || pane.currentPath));
+            const nextPath = pathDraft.trim();
+            if (!nextPath) return;
+            onPathSubmit(nextPath);
           }}>
-            <input name="path" defaultValue={pane.currentPath} />
+            <input
+              name="path"
+              value={pathDraft}
+              onChange={(e) => setPathDraft(e.target.value)}
+            />
           </form>
           <button className="ghost-btn" onClick={onClose}>Close</button>
         </div>
