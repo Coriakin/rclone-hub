@@ -6,6 +6,22 @@ type Props = {
   onCancel: (jobId: string) => void;
 };
 
+function transferRoute(job: Job): { label: string; kind: 'direct' | 'fallback' | 'pending' } {
+  const logMessages = job.logs.map((log) => log.message.toLowerCase());
+  const fallbackSeen = logMessages.some((msg) =>
+    msg.includes('trying fallback') || msg.includes('fallback-pull') || msg.includes('fallback-push'));
+  const directSeen = logMessages.some((msg) => msg.includes('direct-copy'));
+  const fallbackInResults = job.results.some((result) => result.fallback_used);
+
+  if (fallbackSeen || fallbackInResults) {
+    return { label: 'Fallback (via local staging)', kind: 'fallback' };
+  }
+  if (job.status === 'queued' && !directSeen) {
+    return { label: 'Pending', kind: 'pending' };
+  }
+  return { label: 'Direct', kind: 'direct' };
+}
+
 export function TransferQueuePanel({ jobs, onCancel }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const visibleJobs = useMemo(() => {
@@ -32,6 +48,14 @@ export function TransferQueuePanel({ jobs, onCancel }: Props) {
         )}
         {visibleJobs.map((job) => (
           <div key={job.id} className="queue-item">
+            {(() => {
+              const route = transferRoute(job);
+              return (
+                <div className={`queue-route queue-route-${route.kind}`}>
+                  {route.label}
+                </div>
+              );
+            })()}
             <div className="queue-top">
               <span>{job.operation.toUpperCase()}</span>
               <span className={`status status-${job.status}`}>{job.status}</span>
@@ -54,7 +78,6 @@ export function TransferQueuePanel({ jobs, onCancel }: Props) {
                 </div>
               );
             })()}
-            {job.results.some((r) => r.fallback_used) && <div className="fallback">fallback used</div>}
             {(job.status === 'queued' || job.status === 'running') && (
               <button onClick={() => onCancel(job.id)}>Cancel</button>
             )}
