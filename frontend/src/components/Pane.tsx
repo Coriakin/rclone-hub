@@ -7,6 +7,7 @@ type Props = {
   isActive: boolean;
   onActivate: () => void;
   onPathSubmit: (path: string) => void;
+  onRefresh: () => void;
   onNavigate: (path: string) => void;
   onBack: () => void;
   onForward: () => void;
@@ -30,6 +31,7 @@ export function Pane({
   isActive,
   onActivate,
   onPathSubmit,
+  onRefresh,
   onNavigate,
   onBack,
   onForward,
@@ -73,6 +75,15 @@ export function Pane({
               onChange={(e) => setPathDraft(e.target.value)}
             />
           </form>
+          <button
+            className="refresh-icon-btn"
+            onClick={onRefresh}
+            disabled={!pane.currentPath || pane.loading}
+            aria-label="Refresh pane"
+            title="Refresh pane"
+          >
+            ↻
+          </button>
           <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane">X</button>
         </div>
         <div className="pane-toolbar-modes">
