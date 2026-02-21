@@ -162,10 +162,10 @@ class RcloneClient:
         return Path(path).name
 
     def copy(self, source: str, destination_dir: str) -> CommandResult:
-        return self.run(["copy", source, destination_dir, "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copy", source, destination_dir, "--progress=false"])
 
     def copyto(self, source: str, destination: str) -> CommandResult:
-        return self.run(["copyto", source, destination, "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copyto", source, destination, "--progress=false"])
 
     def delete_path(self, source: str) -> CommandResult:
         try:
@@ -179,14 +179,14 @@ class RcloneClient:
 
     def to_local_copyto(self, source_remote: str, destination_local: Path) -> CommandResult:
         destination_local.parent.mkdir(parents=True, exist_ok=True)
-        return self.run(["copyto", source_remote, str(destination_local), "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copyto", source_remote, str(destination_local), "--progress=false"])
 
     def from_local_copyto(self, source_local: Path, destination_remote: str) -> CommandResult:
-        return self.run(["copyto", str(source_local), destination_remote, "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copyto", str(source_local), destination_remote, "--progress=false"])
 
     def to_local_copy(self, source_remote: str, destination_local_dir: Path) -> CommandResult:
         destination_local_dir.mkdir(parents=True, exist_ok=True)
-        return self.run(["copy", source_remote, str(destination_local_dir), "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copy", source_remote, str(destination_local_dir), "--progress=false"])
 
     def from_local_copy(self, source_local_dir: Path, destination_remote_dir: str) -> CommandResult:
-        return self.run(["copy", str(source_local_dir), destination_remote_dir, "--create-empty-src-dirs", "--progress=false"])
+        return self.run(["copy", str(source_local_dir), destination_remote_dir, "--progress=false"])
