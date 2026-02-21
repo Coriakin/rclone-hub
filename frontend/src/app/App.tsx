@@ -125,6 +125,12 @@ export function App() {
   }
 
   function addPaneWithPath(path: string) {
+    const reusable = panes.find((pane) => !pane.currentPath && pane.history.length === 0);
+    if (reusable) {
+      setActivePaneId(reusable.id);
+      navigatePane(reusable.id, path);
+      return;
+    }
     const pane = newPane(path);
     setPanes((prev) => [...prev, pane]);
     setActivePaneId(pane.id);
