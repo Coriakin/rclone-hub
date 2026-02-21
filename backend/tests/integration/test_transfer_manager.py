@@ -22,23 +22,29 @@ class FakeRclone:
     def join_remote(self, destination, base):
         return f"{destination.rstrip('/')}/{base}"
 
-    def copy(self, source, destination):
+    def copy(self, source, destination, on_progress=None):
         if self.first_copy:
             self.first_copy = False
             return FakeResult(returncode=1, stderr="failed")
+        if on_progress:
+            on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)
 
-    def copyto(self, source, destination):
-        return self.copy(source, destination)
+    def copyto(self, source, destination, on_progress=None):
+        return self.copy(source, destination, on_progress)
 
     def stat(self, source):
         from app.models.schemas import Entry
         return Entry(name="f", path=source, is_dir=False, size=1, hashes={"md5": "a"})
 
-    def to_local_copyto(self, source, destination):
+    def to_local_copyto(self, source, destination, on_progress=None):
+        if on_progress:
+            on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)
 
-    def from_local_copyto(self, source, destination):
+    def from_local_copyto(self, source, destination, on_progress=None):
+        if on_progress:
+            on_progress("Transferred: 1 / 1 Bytes, 100%, 1 Bytes/s, ETA 0s")
         return FakeResult(returncode=0)
 
     def list(self, source, recursive=False):

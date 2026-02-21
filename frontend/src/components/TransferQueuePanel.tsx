@@ -38,6 +38,22 @@ export function TransferQueuePanel({ jobs, onCancel }: Props) {
             </div>
             <div className="queue-meta">{job.sources.length} item(s)</div>
             <div className="queue-meta">{job.destination_dir || 'n/a'}</div>
+            {(() => {
+              const progressLog = [...job.logs].reverse().find((log) => log.message.startsWith('progress '));
+              if (!progressLog) return null;
+              const pctMatch = progressLog.message.match(/(\d{1,3})%/);
+              const pct = pctMatch ? Number(pctMatch[1]) : null;
+              return (
+                <div className="queue-progress">
+                  <div className="queue-progress-text">{progressLog.message}</div>
+                  {pct !== null && (
+                    <div className="queue-progress-bar" aria-label={`Progress ${pct}%`}>
+                      <div className="queue-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {job.results.some((r) => r.fallback_used) && <div className="fallback">fallback used</div>}
             {(job.status === 'queued' || job.status === 'running') && (
               <button onClick={() => onCancel(job.id)}>Cancel</button>
