@@ -168,7 +168,14 @@ class RcloneClient:
         return self.run(["copyto", source, destination, "--create-empty-src-dirs", "--progress=false"])
 
     def delete_path(self, source: str) -> CommandResult:
-        return self.run(["delete", source, "--rmdirs"])
+        try:
+            entry = self.stat(source)
+        except RcloneError:
+            # Keep legacy behavior as fallback when stat cannot determine type.
+            return self.run(["delete", source, "--rmdirs"])
+        if entry.is_dir:
+            return self.run(["delete", source, "--rmdirs"])
+        return self.run(["deletefile", source])
 
     def to_local_copyto(self, source_remote: str, destination_local: Path) -> CommandResult:
         destination_local.parent.mkdir(parents=True, exist_ok=True)
