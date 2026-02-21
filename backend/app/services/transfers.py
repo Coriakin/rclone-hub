@@ -169,10 +169,18 @@ class TransferManager:
 
             direct = await self._copy_item(job, source, destination)
             self._log(job, "debug", self._format_result("direct-copy", source, direct))
+            if job.id in self.cancelled or direct.returncode == 130:
+                job.status = JobStatus.cancelled
+                self._log(job, "info", f"cancelled {job.operation.value}: {source}")
+                break
             if direct.returncode != 0:
                 self._log(job, "warning", f"direct copy failed for {source}, trying fallback")
                 ok, err = await self._fallback_copy(job, source, destination, settings)
                 item.fallback_used = True
+                if job.id in self.cancelled:
+                    job.status = JobStatus.cancelled
+                    self._log(job, "info", f"cancelled {job.operation.value}: {source}")
+                    break
                 if not ok:
                     item.status = JobStatus.failed
                     item.error = err
@@ -230,9 +238,10 @@ class TransferManager:
     async def _copy_item(self, job: Job, source: str, destination: str):
         entry = await asyncio.to_thread(self.client.stat, source)
         progress = self._progress_callback(job, source, "direct")
+        should_cancel = lambda: job.id in self.cancelled
         if entry.is_dir:
-            return await asyncio.to_thread(self.client.copy, source, destination, progress)
-        return await asyncio.to_thread(self.client.copyto, source, destination, progress)
+            return await asyncio.to_thread(self.client.copy, source, destination, progress, should_cancel)
+        return await asyncio.to_thread(self.client.copyto, source, destination, progress, should_cancel)
 
     async def _fallback_copy(self, job: Job, source: str, destination: str, settings: Settings) -> tuple[bool, str | None]:
         staging_root = Path(settings.staging_path)
@@ -251,21 +260,26 @@ class TransferManager:
         try:
             entry = await asyncio.to_thread(self.client.stat, source)
             pull_progress = self._progress_callback(job, source, "fallback-pull")
+            should_cancel = lambda: job.id in self.cancelled
             if entry.is_dir:
-                pull = await asyncio.to_thread(self.client.to_local_copy, source, local_path, pull_progress)
+                pull = await asyncio.to_thread(self.client.to_local_copy, source, local_path, pull_progress, should_cancel)
             else:
-                pull = await asyncio.to_thread(self.client.to_local_copyto, source, local_path, pull_progress)
+                pull = await asyncio.to_thread(self.client.to_local_copyto, source, local_path, pull_progress, should_cancel)
             self._log(job, "debug", self._format_result("fallback-pull", source, pull))
             if pull.returncode != 0:
+                if job.id in self.cancelled or pull.returncode == 130:
+                    return False, "cancelled"
                 return False, f"fallback download failed: {pull.stderr.strip()}"
 
             push_progress = self._progress_callback(job, source, "fallback-push")
             if entry.is_dir:
-                push = await asyncio.to_thread(self.client.from_local_copy, local_path, destination, push_progress)
+                push = await asyncio.to_thread(self.client.from_local_copy, local_path, destination, push_progress, should_cancel)
             else:
-                push = await asyncio.to_thread(self.client.from_local_copyto, local_path, destination, push_progress)
+                push = await asyncio.to_thread(self.client.from_local_copyto, local_path, destination, push_progress, should_cancel)
             self._log(job, "debug", self._format_result("fallback-push", source, push))
             if push.returncode != 0:
+                if job.id in self.cancelled or push.returncode == 130:
+                    return False, "cancelled"
                 return False, f"fallback upload failed: {push.stderr.strip()}"
 
             return True, None
