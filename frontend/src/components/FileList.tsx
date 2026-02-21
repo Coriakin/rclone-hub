@@ -6,6 +6,7 @@ type Props = {
   entries: Entry[];
   selectionMode: boolean;
   selected: Set<string>;
+  highlighted: Set<string>;
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onNavigate: (path: string) => void;
@@ -18,6 +19,7 @@ export function FileList({
   entries,
   selectionMode,
   selected,
+  highlighted,
   onToggleSelect,
   onFileClick,
   onNavigate,
@@ -35,7 +37,7 @@ export function FileList({
       {entries.map((entry) => (
         <div
           key={entry.path}
-          className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''}`}
+          className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''} ${highlighted.has(entry.path) ? 'is-arrival' : ''}`}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData('application/x-rclone-paths', JSON.stringify({ sources: [entry.path], sourcePaneId: paneId }));

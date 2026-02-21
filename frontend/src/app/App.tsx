@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type Job } from '../api/client';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
@@ -35,6 +35,11 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null }>({ open: false, paneId: null });
   const [settings, setSettings] = useState<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' } | null>(null);
+  const [targetPaneBySourcePane, setTargetPaneBySourcePane] = useState<Record<string, string>>({});
+  const [highlightedByPane, setHighlightedByPane] = useState<Record<string, string[]>>({});
+  const pendingTransferTargetsRef = useRef<Record<string, { targetPaneId: string }>>({});
+  const processedTransferJobsRef = useRef<Set<string>>(new Set());
+  const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const activePane = useMemo(() => panes.find((p) => p.id === activePaneId), [panes, activePaneId]);
 
@@ -65,6 +70,62 @@ export function App() {
     }, 1500);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      Object.values(highlightTimersRef.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
+
+  useEffect(() => {
+    for (const job of jobs) {
+      const pending = pendingTransferTargetsRef.current[job.id];
+      if (!pending) continue;
+      if (processedTransferJobsRef.current.has(job.id)) continue;
+      if (job.status === 'queued' || job.status === 'running') continue;
+
+      processedTransferJobsRef.current.add(job.id);
+      const targetPane = panes.find((pane) => pane.id === pending.targetPaneId);
+      if (targetPane?.currentPath) {
+        loadPane(targetPane.currentPath, targetPane.id).catch(console.error);
+      }
+
+      const arrivedPaths = job.results
+        .filter((result) => result.status === 'success' && !!result.destination)
+        .map((result) => result.destination as string);
+
+      if (arrivedPaths.length > 0) {
+        setHighlightedByPane((prev) => {
+          const existing = prev[pending.targetPaneId] ?? [];
+          const merged = Array.from(new Set([...existing, ...arrivedPaths]));
+          return { ...prev, [pending.targetPaneId]: merged };
+        });
+
+        for (const path of arrivedPaths) {
+          const timerKey = `${pending.targetPaneId}|${path}`;
+          const existingTimer = highlightTimersRef.current[timerKey];
+          if (existingTimer) {
+            clearTimeout(existingTimer);
+          }
+          highlightTimersRef.current[timerKey] = setTimeout(() => {
+            setHighlightedByPane((prev) => {
+              const current = prev[pending.targetPaneId] ?? [];
+              const next = current.filter((item) => item !== path);
+              if (next.length === current.length) return prev;
+              if (!next.length) {
+                const { [pending.targetPaneId]: _removed, ...rest } = prev;
+                return rest;
+              }
+              return { ...prev, [pending.targetPaneId]: next };
+            });
+            delete highlightTimersRef.current[timerKey];
+          }, 4500);
+        }
+      }
+
+      delete pendingTransferTargetsRef.current[job.id];
+    }
+  }, [jobs, panes]);
 
   async function waitForJobTerminal(jobId: string, timeoutMs = 30000): Promise<Job | null> {
     const started = Date.now();
@@ -98,27 +159,19 @@ export function App() {
     loadPane(path, paneId).catch(console.error);
   }
 
-  function targetPaneIdFrom(sourcePaneId: string): string | null {
-    const other = panes.find((p) => p.id !== sourcePaneId);
-    return other?.id ?? null;
-  }
-
-  async function transferSelected(sourcePaneId: string, move: boolean) {
+  async function transferSelected(sourcePaneId: string, targetPaneId: string, move: boolean) {
     const sourcePane = panes.find((p) => p.id === sourcePaneId);
     if (!sourcePane) return;
-    const targetId = targetPaneIdFrom(sourcePaneId);
-    if (!targetId) return;
-    const targetPane = panes.find((p) => p.id === targetId);
+    const targetPane = panes.find((p) => p.id === targetPaneId);
     if (!targetPane?.currentPath) return;
 
     const sources = Array.from(sourcePane.selected);
     if (!sources.length) return;
 
-    if (move) {
-      await api.move(sources, targetPane.currentPath);
-    } else {
-      await api.copy(sources, targetPane.currentPath);
-    }
+    const job = move
+      ? await api.move(sources, targetPane.currentPath)
+      : await api.copy(sources, targetPane.currentPath);
+    pendingTransferTargetsRef.current[job.id] = { targetPaneId };
     await refreshJobs();
   }
 
@@ -138,8 +191,8 @@ export function App() {
     }
 
     const shouldMove = samePaneDrop && targetPath ? true : move;
-    if (shouldMove) await api.move(sources, dest);
-    else await api.copy(sources, dest);
+    const job = shouldMove ? await api.move(sources, dest) : await api.copy(sources, dest);
+    pendingTransferTargetsRef.current[job.id] = { targetPaneId };
     await refreshJobs();
   }
 
@@ -204,6 +257,20 @@ export function App() {
               key={pane.id}
               pane={pane}
               isActive={pane.id === activePaneId}
+              highlighted={new Set(highlightedByPane[pane.id] ?? [])}
+              targetOptions={panes
+                .filter((p) => p.id !== pane.id && !!p.currentPath)
+                .map((p) => ({ id: p.id, path: p.currentPath }))}
+              selectedTargetPaneId={(() => {
+                const options = panes
+                  .filter((p) => p.id !== pane.id && !!p.currentPath)
+                  .map((p) => p.id);
+                const selected = targetPaneBySourcePane[pane.id];
+                if (selected && options.includes(selected)) return selected;
+                if (options.length === 1) return options[0];
+                return '';
+              })()}
+              onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
               onActivate={() => setActivePaneId(pane.id)}
               onPathSubmit={(path) => navigatePane(pane.id, path)}
               onNavigate={(path) => navigatePane(pane.id, path)}
@@ -242,8 +309,8 @@ export function App() {
                 return { ...p, selected: next };
               }))}
               onOpenInNewPane={(path) => openPathInNewPane(path)}
-              onCopySelected={() => transferSelected(pane.id, false).catch(console.error)}
-              onMoveSelected={() => transferSelected(pane.id, true).catch(console.error)}
+              onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
+              onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
               onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id })}
               onDropTarget={(targetPath, sources, move, sourcePaneId) =>
                 handleDrop(pane.id, targetPath, sources, move, sourcePaneId).catch(console.error)}
