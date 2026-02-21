@@ -180,6 +180,17 @@ input, select {
   background: #fff;
 }
 
+.close-icon-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .danger-btn {
   color: #fff;
   border-color: color-mix(in srgb, var(--danger) 70%, #7c1f17);
