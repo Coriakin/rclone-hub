@@ -14,8 +14,12 @@ type Props = {
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onOpenInNewPane: (path: string) => void;
-  onCopySelected: () => void;
-  onMoveSelected: () => void;
+  highlighted: Set<string>;
+  targetOptions: Array<{ id: string; path: string }>;
+  selectedTargetPaneId: string;
+  onSelectTargetPane: (paneId: string) => void;
+  onCopySelected: (targetPaneId: string) => void;
+  onMoveSelected: (targetPaneId: string) => void;
   onDeleteSelected: () => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
   onClose: () => void;
@@ -33,6 +37,10 @@ export function Pane({
   onToggleSelect,
   onFileClick,
   onOpenInNewPane,
+  highlighted,
+  targetOptions,
+  selectedTargetPaneId,
+  onSelectTargetPane,
   onCopySelected,
   onMoveSelected,
   onDeleteSelected,
@@ -41,6 +49,7 @@ export function Pane({
 }: Props) {
   const hasSelection = pane.selected.size > 0;
   const [pathDraft, setPathDraft] = useState(pane.currentPath);
+  const canTransfer = !!selectedTargetPaneId;
 
   useEffect(() => {
     setPathDraft(pane.currentPath);
@@ -76,9 +85,22 @@ export function Pane({
             </button>
           </div>
           {pane.mode === 'select' && hasSelection && (
-            <div className="ops-group" role="group" aria-label="Selection operations">
-              <button onClick={onCopySelected}>Copy</button>
-              <button onClick={onMoveSelected}>Move</button>
+            <div className="ops-row">
+              <select
+                className="target-pane-select"
+                value={selectedTargetPaneId}
+                onChange={(e) => onSelectTargetPane(e.target.value)}
+                aria-label="Target pane"
+              >
+                <option value="">{targetOptions.length ? 'Choose target pane...' : 'No target pane open'}</option>
+                {targetOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.path}</option>
+                ))}
+              </select>
+              <div className="ops-group" role="group" aria-label="Selection operations">
+                <button disabled={!canTransfer} onClick={() => onCopySelected(selectedTargetPaneId)}>Copy</button>
+                <button disabled={!canTransfer} onClick={() => onMoveSelected(selectedTargetPaneId)}>Move</button>
+              </div>
               <button className="danger-btn" onClick={onDeleteSelected}>Delete</button>
             </div>
           )}
@@ -91,6 +113,7 @@ export function Pane({
         entries={pane.items}
         selectionMode={pane.mode === 'select'}
         selected={pane.selected}
+        highlighted={highlighted}
         onToggleSelect={onToggleSelect}
         onFileClick={onFileClick}
         onNavigate={onNavigate}

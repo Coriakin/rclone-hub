@@ -115,8 +115,8 @@ input, select {
 }
 
 .pane {
-  min-width: 360px;
-  width: 420px;
+  min-width: 460px;
+  width: 520px;
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: 14px;
@@ -158,12 +158,28 @@ input, select {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .mode-group, .ops-group {
   display: inline-flex;
   gap: 6px;
+}
+
+.ops-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-left: auto;
+  gap: 6px;
+}
+
+.target-pane-select {
+  min-width: 180px;
+  max-width: 320px;
+  width: min(320px, 100%);
 }
 
 .mode-btn {
@@ -232,6 +248,11 @@ input, select {
 .file-row.is-selected {
   background: #e6f0ff;
   border-color: #8bb4ff;
+}
+
+.file-row.is-arrival {
+  background: #e9f9ef;
+  border-color: #88d6a7;
 }
 
 .file-checkbox {
@@ -490,6 +511,11 @@ input, select {
 }
 
 @media (max-width: 1280px) {
+  .pane {
+    min-width: min(100%, 520px);
+    width: 100%;
+  }
+
   .main-grid {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(380px, 1fr) auto;
