@@ -42,6 +42,8 @@ class TransferManager:
     def start(self) -> None:
         if self.worker_task is None:
             self.db.mark_running_jobs_interrupted()
+            # Reload after DB recovery so in-memory job states match persisted status.
+            self.jobs = {j.id: j for j in self.db.list_jobs()}
             self.worker_task = asyncio.create_task(self._worker())
 
     def _now(self) -> datetime:
