@@ -439,6 +439,10 @@ input, select {
   height: 100px;
 }
 
+.drawer-tabs button:hover:not(:disabled) {
+  transform: rotate(180deg);
+}
+
 .drawer-tabs button.active {
   color: #fff;
   border-color: color-mix(in srgb, var(--accent) 56%, #0f3ea5);
@@ -506,5 +510,9 @@ input, select {
     transform: none;
     height: auto;
     white-space: nowrap;
+  }
+
+  .drawer-tabs button:hover:not(:disabled) {
+    transform: none;
   }
 }

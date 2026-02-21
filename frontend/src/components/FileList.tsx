@@ -2,23 +2,24 @@ import React from 'react';
 import type { Entry } from '../api/client';
 
 type Props = {
+  paneId: string;
   entries: Entry[];
   selectionMode: boolean;
   selected: Set<string>;
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onNavigate: (path: string) => void;
-  onDropTarget: (targetPath: string | null, sources: string[], move: boolean) => void;
+  onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
 };
 
-export function FileList({ entries, selectionMode, selected, onToggleSelect, onFileClick, onNavigate, onDropTarget }: Props) {
+export function FileList({ paneId, entries, selectionMode, selected, onToggleSelect, onFileClick, onNavigate, onDropTarget }: Props) {
   return (
     <div className="file-list" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
       e.preventDefault();
       const raw = e.dataTransfer.getData('application/x-rclone-paths');
       if (!raw) return;
-      const payload = JSON.parse(raw) as { sources: string[] };
-      onDropTarget(null, payload.sources, e.altKey);
+      const payload = JSON.parse(raw) as { sources: string[]; sourcePaneId?: string };
+      onDropTarget(null, payload.sources, e.altKey, payload.sourcePaneId);
     }}>
       {entries.map((entry) => (
         <div
@@ -26,7 +27,7 @@ export function FileList({ entries, selectionMode, selected, onToggleSelect, onF
           className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''}`}
           draggable
           onDragStart={(e) => {
-            e.dataTransfer.setData('application/x-rclone-paths', JSON.stringify({ sources: [entry.path] }));
+            e.dataTransfer.setData('application/x-rclone-paths', JSON.stringify({ sources: [entry.path], sourcePaneId: paneId }));
             e.dataTransfer.effectAllowed = 'copyMove';
           }}
           onDrop={(e) => {
@@ -34,8 +35,8 @@ export function FileList({ entries, selectionMode, selected, onToggleSelect, onF
             e.stopPropagation();
             const raw = e.dataTransfer.getData('application/x-rclone-paths');
             if (!raw) return;
-            const payload = JSON.parse(raw) as { sources: string[] };
-            onDropTarget(entry.is_dir ? entry.path : null, payload.sources, e.altKey);
+            const payload = JSON.parse(raw) as { sources: string[]; sourcePaneId?: string };
+            onDropTarget(entry.is_dir ? entry.path : null, payload.sources, e.altKey, payload.sourcePaneId);
           }}
           onDragOver={(e) => {
             if (entry.is_dir) {
