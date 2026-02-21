@@ -20,6 +20,11 @@ export type Job = {
     fallback_used: boolean;
     error?: string;
   }>;
+  logs: Array<{
+    ts: string;
+    level: string;
+    message: string;
+  }>;
 };
 
 const API_BASE = 'http://127.0.0.1:8000/api';
