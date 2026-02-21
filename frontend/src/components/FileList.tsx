@@ -26,12 +26,25 @@ export function FileList({
   onOpenInNewPane,
   onDropTarget,
 }: Props) {
+  function readDropPayload(event: React.DragEvent): { sources: string[]; sourcePaneId?: string } | null {
+    const custom = event.dataTransfer.getData('application/x-rclone-paths');
+    const fallback = event.dataTransfer.getData('text/plain');
+    const raw = custom || fallback;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { sources?: string[]; sourcePaneId?: string };
+      if (!Array.isArray(parsed.sources) || parsed.sources.length === 0) return null;
+      return { sources: parsed.sources, sourcePaneId: parsed.sourcePaneId };
+    } catch {
+      return null;
+    }
+  }
+
   return (
     <div className="file-list" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
       e.preventDefault();
-      const raw = e.dataTransfer.getData('application/x-rclone-paths');
-      if (!raw) return;
-      const payload = JSON.parse(raw) as { sources: string[]; sourcePaneId?: string };
+      const payload = readDropPayload(e);
+      if (!payload) return;
       onDropTarget(null, payload.sources, e.altKey, payload.sourcePaneId);
     }}>
       {entries.map((entry) => (
@@ -40,15 +53,16 @@ export function FileList({
           className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''} ${highlighted.has(entry.path) ? 'is-arrival' : ''}`}
           draggable
           onDragStart={(e) => {
-            e.dataTransfer.setData('application/x-rclone-paths', JSON.stringify({ sources: [entry.path], sourcePaneId: paneId }));
+            const payload = JSON.stringify({ sources: [entry.path], sourcePaneId: paneId });
+            e.dataTransfer.setData('application/x-rclone-paths', payload);
+            e.dataTransfer.setData('text/plain', payload);
             e.dataTransfer.effectAllowed = 'copyMove';
           }}
           onDrop={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            const raw = e.dataTransfer.getData('application/x-rclone-paths');
-            if (!raw) return;
-            const payload = JSON.parse(raw) as { sources: string[]; sourcePaneId?: string };
+            const payload = readDropPayload(e);
+            if (!payload) return;
             onDropTarget(entry.is_dir ? entry.path : null, payload.sources, e.altKey, payload.sourcePaneId);
           }}
           onDragOver={(e) => {

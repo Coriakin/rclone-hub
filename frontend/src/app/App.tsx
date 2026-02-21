@@ -34,6 +34,17 @@ export function App() {
   const [activePaneId, setActivePaneId] = useState<string>('pane-1');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null }>({ open: false, paneId: null });
+  const [confirmDrop, setConfirmDrop] = useState<{
+    open: boolean;
+    targetPaneId: string | null;
+    targetPath: string | null;
+    sources: string[];
+  }>({
+    open: false,
+    targetPaneId: null,
+    targetPath: null,
+    sources: [],
+  });
   const [settings, setSettings] = useState<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' } | null>(null);
   const [targetPaneBySourcePane, setTargetPaneBySourcePane] = useState<Record<string, string>>({});
   const [highlightedByPane, setHighlightedByPane] = useState<Record<string, string[]>>({});
@@ -175,7 +186,7 @@ export function App() {
     await refreshJobs();
   }
 
-  async function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], move: boolean, dragSourcePaneId?: string) {
+  function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], _move: boolean, dragSourcePaneId?: string) {
     const pane = panes.find((p) => p.id === targetPaneId);
     if (!pane) return;
 
@@ -190,9 +201,20 @@ export function App() {
       return;
     }
 
-    const shouldMove = samePaneDrop && targetPath ? true : move;
-    const job = shouldMove ? await api.move(sources, dest) : await api.copy(sources, dest);
+    setConfirmDrop({ open: true, targetPaneId, targetPath, sources });
+  }
+
+  async function executeDrop(move: boolean) {
+    if (!confirmDrop.targetPaneId) return;
+    const pane = panes.find((p) => p.id === confirmDrop.targetPaneId);
+    if (!pane) return;
+    const dest = confirmDrop.targetPath ?? pane.currentPath;
+    if (!dest || confirmDrop.sources.length === 0) return;
+
+    const job = move ? await api.move(confirmDrop.sources, dest) : await api.copy(confirmDrop.sources, dest);
+    const targetPaneId = confirmDrop.targetPaneId;
     pendingTransferTargetsRef.current[job.id] = { targetPaneId };
+    setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [] });
     await refreshJobs();
   }
 
@@ -313,7 +335,7 @@ export function App() {
               onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
               onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id })}
               onDropTarget={(targetPath, sources, move, sourcePaneId) =>
-                handleDrop(pane.id, targetPath, sources, move, sourcePaneId).catch(console.error)}
+                handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
               onClose={() => closePane(pane.id)}
             />
           ))}
@@ -357,6 +379,28 @@ export function App() {
           await refreshJobs();
         }}
       />
+
+      {confirmDrop.open && (
+        <div className="dialog-backdrop">
+          <div className="dialog">
+            <h3>Choose transfer action</h3>
+            <p>
+              {confirmDrop.sources.length} item(s) dropped.
+              {' '}
+              Destination:
+              {' '}
+              {(confirmDrop.targetPath ?? panes.find((p) => p.id === confirmDrop.targetPaneId)?.currentPath) || 'unknown'}
+            </p>
+            <div className="dialog-actions">
+              <button onClick={() => setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [] })}>
+                Cancel
+              </button>
+              <button onClick={() => executeDrop(false).catch(console.error)}>Copy</button>
+              <button onClick={() => executeDrop(true).catch(console.error)}>Move</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
