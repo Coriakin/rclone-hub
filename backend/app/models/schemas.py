@@ -103,7 +103,6 @@ class HealthResponse(BaseModel):
 class SearchCreateRequest(BaseModel):
     root_path: str
     filename_query: str = "*"
-    literal: bool = False
     min_size_mb: float | None = Field(default=None, ge=0)
 
 

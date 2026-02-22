@@ -17,7 +17,6 @@ class SearchSession:
     id: str
     root_path: str
     filename_query: str
-    literal: bool
     min_size_bytes: int | None
     created_at: float = field(default_factory=time.monotonic)
     last_polled_at: float = field(default_factory=time.monotonic)
@@ -69,7 +68,7 @@ class SearchManager:
                 except asyncio.CancelledError:
                     pass
 
-    async def create(self, root_path: str, filename_query: str, literal: bool, min_size_mb: float | None) -> str:
+    async def create(self, root_path: str, filename_query: str, min_size_mb: float | None) -> str:
         query = filename_query.strip() or "*"
         min_size_bytes = None if min_size_mb is None else int(min_size_mb * 1024 * 1024)
         search_id = str(uuid.uuid4())
@@ -77,7 +76,6 @@ class SearchManager:
             id=search_id,
             root_path=root_path,
             filename_query=query,
-            literal=literal,
             min_size_bytes=min_size_bytes,
         )
 
@@ -219,10 +217,13 @@ class SearchManager:
         await self._emit_done(session, "success")
 
     def _matches(self, session: SearchSession, entry: Entry) -> bool:
-        if session.literal:
-            name_ok = entry.name == session.filename_query
+        query = session.filename_query.casefold()
+        name = entry.name.casefold()
+        has_wildcard = any(token in session.filename_query for token in ("*", "?", "["))
+        if has_wildcard:
+            name_ok = fnmatch.fnmatchcase(name, query)
         else:
-            name_ok = fnmatch.fnmatchcase(entry.name, session.filename_query)
+            name_ok = name == query
         if not name_ok:
             return False
         if session.min_size_bytes is None:

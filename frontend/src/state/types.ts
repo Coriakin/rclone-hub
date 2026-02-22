@@ -4,7 +4,6 @@ export type PaneMode = 'browse' | 'select' | 'search';
 
 export type PaneSearchState = {
   filenameQuery: string;
-  literal: boolean;
   minSizeMb: string;
   running: boolean;
   searchId?: string;

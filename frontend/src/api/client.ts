@@ -74,7 +74,7 @@ export const api = {
   health: () => json<{ ok: boolean }>(`${API_BASE}/health`),
   remotes: () => json<{ remotes: string[] }>(`${API_BASE}/remotes`),
   list: (remotePath: string) => json<{ items: Entry[] }>(`${API_BASE}/list?remote_path=${encodeURIComponent(remotePath)}&recursive=false`),
-  startSearch: (payload: { root_path: string; filename_query: string; literal: boolean; min_size_mb: number | null }) =>
+  startSearch: (payload: { root_path: string; filename_query: string; min_size_mb: number | null }) =>
     json<{ search_id: string }>(`${API_BASE}/searches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

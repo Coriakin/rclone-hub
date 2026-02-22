@@ -137,14 +137,6 @@ export function Pane({
                 placeholder="*"
               />
             </label>
-            <label className="search-toggle">
-              <input
-                type="checkbox"
-                checked={pane.search.literal}
-                onChange={(e) => onSearchChange({ literal: e.target.checked })}
-              />
-              Literal match
-            </label>
             <label className="search-field search-size">
               <span>Min size (MB)</span>
               <input

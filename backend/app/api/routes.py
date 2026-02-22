@@ -50,7 +50,6 @@ def build_router(rclone: RcloneClient, transfers: TransferManager, searches: Sea
             search_id = await searches.create(
                 root_path=req.root_path,
                 filename_query=req.filename_query,
-                literal=req.literal,
                 min_size_mb=req.min_size_mb,
             )
             return SearchCreateResponse(search_id=search_id)
