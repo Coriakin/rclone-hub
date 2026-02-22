@@ -496,14 +496,18 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <h1>rclone hub</h1>
-        <button onClick={addPane}>Add pane</button>
-        <div className="remotes">
-          {remotes.map((remote) => (
-            <button key={remote} className="remote-btn" onClick={() => openRemoteInActivePane(remote)}>
-              {remote}
-            </button>
-          ))}
+        <div className="topbar-title">
+          <h1>rclone hub</h1>
+        </div>
+        <div className="topbar-controls">
+          <button className="primary-btn" onClick={addPane}>Add pane</button>
+          <div className="remotes">
+            {remotes.map((remote) => (
+              <button key={remote} className="remote-btn" onClick={() => openRemoteInActivePane(remote)}>
+                {remote}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -599,9 +603,15 @@ export function App() {
         </section>
         <aside className={`right-drawer ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'open' : ''}`}>
           <div className="drawer-tabs">
-            <button className={openTabs.queue ? 'active' : ''} onClick={() => toggleRightTab('queue')}>Queue</button>
-            <button className={openTabs.settings ? 'active' : ''} onClick={() => toggleRightTab('settings')}>Settings</button>
-            <button className={openTabs.diagnostics ? 'active' : ''} onClick={() => toggleRightTab('diagnostics')}>Diagnostics</button>
+            <button className={openTabs.queue ? 'active' : ''} onClick={() => toggleRightTab('queue')}>
+              <span>Queue</span>
+            </button>
+            <button className={openTabs.settings ? 'active' : ''} onClick={() => toggleRightTab('settings')}>
+              <span>Settings</span>
+            </button>
+            <button className={openTabs.diagnostics ? 'active' : ''} onClick={() => toggleRightTab('diagnostics')}>
+              <span>Diagnostics</span>
+            </button>
           </div>
           {(openTabs.queue || openTabs.settings || openTabs.diagnostics) && (
             <div className="drawer-content">
