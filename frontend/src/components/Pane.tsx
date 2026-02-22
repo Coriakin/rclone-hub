@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { PaneState } from '../state/types';
+import type { PaneMode, PaneSearchState, PaneState } from '../state/types';
 import { FileList } from './FileList';
 
 type Props = {
@@ -11,7 +11,10 @@ type Props = {
   onNavigate: (path: string) => void;
   onBack: () => void;
   onForward: () => void;
-  onToggleSelectionMode: () => void;
+  onSetMode: (mode: PaneMode) => void | Promise<void>;
+  onSearchChange: (patch: Partial<PaneSearchState>) => void;
+  onStartSearch: () => void;
+  onCancelSearch: () => void;
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onOpenInNewPane: (path: string) => void;
@@ -35,7 +38,10 @@ export function Pane({
   onNavigate,
   onBack,
   onForward,
-  onToggleSelectionMode,
+  onSetMode,
+  onSearchChange,
+  onStartSearch,
+  onCancelSearch,
   onToggleSelect,
   onFileClick,
   onOpenInNewPane,
@@ -88,11 +94,14 @@ export function Pane({
         </div>
         <div className="pane-toolbar-modes">
           <div className="mode-group" role="group" aria-label="Pane mode">
-            <button className={pane.mode === 'browse' ? 'mode-btn active' : 'mode-btn'} onClick={() => pane.mode === 'select' && onToggleSelectionMode()}>
+            <button className={pane.mode === 'browse' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('browse')}>
               Browse
             </button>
-            <button className={pane.mode === 'select' ? 'mode-btn active' : 'mode-btn'} onClick={() => pane.mode === 'browse' && onToggleSelectionMode()}>
+            <button className={pane.mode === 'select' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('select')}>
               Select
+            </button>
+            <button className={pane.mode === 'search' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('search')}>
+              Search
             </button>
           </div>
           {pane.mode === 'select' && hasSelection && (
@@ -117,12 +126,67 @@ export function Pane({
           )}
         </div>
       </div>
+      {pane.mode === 'search' && (
+        <div className="search-panel">
+          <div className="search-row">
+            <label className="search-field">
+              <span>Filename</span>
+              <input
+                value={pane.search.filenameQuery}
+                onChange={(e) => onSearchChange({ filenameQuery: e.target.value })}
+                placeholder="*"
+              />
+            </label>
+            <label className="search-toggle">
+              <input
+                type="checkbox"
+                checked={pane.search.literal}
+                onChange={(e) => onSearchChange({ literal: e.target.checked })}
+              />
+              Literal match
+            </label>
+            <label className="search-field search-size">
+              <span>Min size (MB)</span>
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                value={pane.search.minSizeMb}
+                onChange={(e) => onSearchChange({ minSizeMb: e.target.value })}
+                placeholder="1"
+              />
+            </label>
+            {!pane.search.running ? (
+              <button onClick={onStartSearch} disabled={!pane.currentPath}>Start search</button>
+            ) : (
+              <button className="danger-btn" onClick={onCancelSearch}>Stop search</button>
+            )}
+          </div>
+          {(pane.search.running || pane.search.currentDir) && (
+            <div className="search-progress">
+              {pane.search.running && (
+                <div className="progressbar indeterminate" aria-hidden="true">
+                  <span />
+                </div>
+              )}
+              <div className="search-progress-text">
+                <strong>Currently searching in:</strong> {pane.search.currentDir ?? pane.currentPath}
+              </div>
+              <div className="search-progress-meta">
+                Scanned directories: {pane.search.scannedDirs} | Matches: {pane.search.matchedCount}
+              </div>
+            </div>
+          )}
+          {pane.search.error && <div className="pane-error">{pane.search.error}</div>}
+        </div>
+      )}
       {pane.loading && <div className="pane-status">Loading...</div>}
       {pane.error && <div className="pane-error">{pane.error}</div>}
       <FileList
         paneId={pane.id}
         entries={pane.items}
         selectionMode={pane.mode === 'select'}
+        showPathColumn={pane.mode === 'search'}
         selected={pane.selected}
         highlighted={highlighted}
         onToggleSelect={onToggleSelect}

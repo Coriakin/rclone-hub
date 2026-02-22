@@ -1,8 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import type { Job } from '../api/client';
 
+export type DiagnosticsLog = {
+  ts: string;
+  level: 'info' | 'warning' | 'error' | 'debug';
+  source: string;
+  message: string;
+};
+
 type Props = {
   jobs: Job[];
+  logs?: DiagnosticsLog[];
 };
 
 const DIAG_CLEAR_KEY = 'rcloneHub.diagnostics.clearAfterKey';
@@ -63,7 +71,16 @@ function toConsoleRows(jobs: Job[]): ConsoleRow[] {
   return rows.sort((a, b) => a.orderKey.localeCompare(b.orderKey));
 }
 
-export function DiagnosticsPanel({ jobs }: Props) {
+function toSearchRows(logs: DiagnosticsLog[]): ConsoleRow[] {
+  return logs.map((log, idx) => ({
+    ts: log.ts,
+    orderKey: `${log.ts}-${String(idx).padStart(4, '0')}-search-${log.source}`,
+    line: `[${prettyTs(log.ts)}] [${log.level.toUpperCase()}] [${log.source}] ${log.message}`,
+    level: log.level,
+  }));
+}
+
+export function DiagnosticsPanel({ jobs, logs = [] }: Props) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const [clearAfterKey, setClearAfterKey] = useState<string | null>(() => {
     try {
@@ -72,7 +89,10 @@ export function DiagnosticsPanel({ jobs }: Props) {
       return null;
     }
   });
-  const allRows = useMemo(() => toConsoleRows(jobs), [jobs]);
+  const allRows = useMemo(
+    () => [...toConsoleRows(jobs), ...toSearchRows(logs)].sort((a, b) => a.orderKey.localeCompare(b.orderKey)),
+    [jobs, logs]
+  );
   const rows = useMemo(() => {
     if (!clearAfterKey) return allRows;
     return allRows.filter((row) => row.orderKey > clearAfterKey);
@@ -115,7 +135,7 @@ export function DiagnosticsPanel({ jobs }: Props) {
           </button>
         </div>
       </div>
-      <div className="diag-summary">{rows.length} lines across {jobs.length} jobs</div>
+      <div className="diag-summary">{rows.length} lines across {jobs.length} jobs and {logs.length} search events</div>
       <div className="diag-logs" role="log" aria-live="polite">
         {rows.length === 0 && <div className="diag-empty">No operations yet.</div>}
         {rows.map((row, idx) => (

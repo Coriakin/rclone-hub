@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Job } from '../api/client';
+import { api, type Job, type SearchEvent } from '../api/client';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
+import { DiagnosticsPanel, type DiagnosticsLog } from '../components/DiagnosticsPanel';
 import { Pane } from '../components/Pane';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TransferQueuePanel } from '../components/TransferQueuePanel';
@@ -18,6 +18,15 @@ function newPane(path = ''): PaneState {
     historyIndex: path ? 0 : -1,
     items: [],
     mode: 'browse',
+    search: {
+      filenameQuery: '*',
+      literal: false,
+      minSizeMb: '',
+      running: false,
+      scannedDirs: 0,
+      matchedCount: 0,
+      eventCursor: 0,
+    },
     selected: new Set<string>(),
     loading: false,
   };
@@ -33,6 +42,7 @@ export function App() {
   const [panes, setPanes] = useState<PaneState[]>([newPane('')]);
   const [activePaneId, setActivePaneId] = useState<string>('pane-1');
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [diagnosticsLogs, setDiagnosticsLogs] = useState<DiagnosticsLog[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null }>({ open: false, paneId: null });
   const [confirmDrop, setConfirmDrop] = useState<{
     open: boolean;
@@ -51,6 +61,7 @@ export function App() {
   const pendingTransferTargetsRef = useRef<Record<string, { targetPaneId: string }>>({});
   const processedTransferJobsRef = useRef<Set<string>>(new Set());
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const panesRef = useRef<PaneState[]>(panes);
 
   const activePane = useMemo(() => panes.find((p) => p.id === activePaneId), [panes, activePaneId]);
 
@@ -58,13 +69,29 @@ export function App() {
     const r = await api.remotes();
     setRemotes(r.remotes);
     if (!activePane?.currentPath && r.remotes[0]) {
-      navigatePane(activePaneId, r.remotes[0]);
+      navigatePane(activePaneId, r.remotes[0]).catch(console.error);
     }
   }
 
   async function refreshJobs() {
     const j = await api.jobs();
     setJobs(j.jobs);
+  }
+
+  function pushDiagnostics(level: DiagnosticsLog['level'], source: string, message: string) {
+    const item: DiagnosticsLog = {
+      ts: new Date().toISOString(),
+      level,
+      source,
+      message,
+    };
+    setDiagnosticsLogs((prev) => {
+      const next = [...prev, item];
+      if (next.length > 1200) {
+        return next.slice(next.length - 1200);
+      }
+      return next;
+    });
   }
 
   async function loadSettings() {
@@ -83,7 +110,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    panesRef.current = panes;
+  }, [panes]);
+
+  useEffect(() => {
     return () => {
+      for (const pane of panesRef.current) {
+        if (pane.search.searchId) {
+          api.cancelSearch(pane.search.searchId).catch(() => undefined);
+        }
+      }
       Object.values(highlightTimersRef.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
@@ -150,6 +186,205 @@ export function App() {
     return null;
   }
 
+  function getPane(paneId: string) {
+    return panesRef.current.find((p) => p.id === paneId);
+  }
+
+  function setPaneMode(paneId: string, mode: 'browse' | 'select' | 'search') {
+    setPanes((prev) => prev.map((p) => p.id === paneId ? {
+      ...p,
+      mode,
+      selected: mode === 'select' ? p.selected : new Set<string>(),
+    } : p));
+  }
+
+  function clearPaneSearchRuntime(paneId: string, error?: string) {
+    setPanes((prev) => prev.map((p) => p.id === paneId ? {
+      ...p,
+      search: {
+        ...p.search,
+        running: false,
+        searchId: undefined,
+        currentDir: undefined,
+        scannedDirs: 0,
+        eventCursor: 0,
+        error,
+      },
+    } : p));
+  }
+
+  async function cancelPaneSearch(paneId: string) {
+    const pane = getPane(paneId);
+    if (!pane?.search.searchId) {
+      clearPaneSearchRuntime(paneId);
+      return;
+    }
+    const searchId = pane.search.searchId;
+    clearPaneSearchRuntime(paneId);
+    try {
+      await api.cancelSearch(searchId);
+      pushDiagnostics('warning', `SEARCH/${searchId.slice(0, 8)}`, `pane=${paneId} cancel requested`);
+    } catch {
+      // Ignore cancel races when search was already completed/removed.
+    }
+  }
+
+  function applySearchEvents(paneId: string, events: SearchEvent[], nextSeq: number) {
+    function parentPath(path: string): string {
+      if (!path.includes(':')) return '';
+      const [remote, rel] = path.split(':', 2);
+      const normalized = rel.replace(/^\/+|\/+$/g, '');
+      if (!normalized) return `${remote}:`;
+      const parts = normalized.split('/');
+      if (parts.length <= 1) return `${remote}:`;
+      return `${remote}:${parts.slice(0, -1).join('/')}`;
+    }
+
+    setPanes((prev) => prev.map((p) => {
+      if (p.id !== paneId) return p;
+      const nextItems = [...p.items];
+      let currentDir = p.search.currentDir;
+      let scannedDirs = p.search.scannedDirs;
+      let matchedCount = p.search.matchedCount;
+      let running = p.search.running;
+      let error = p.search.error;
+      for (const event of events) {
+        if (event.type === 'progress') {
+          currentDir = event.current_dir;
+          scannedDirs = event.scanned_dirs;
+          matchedCount = event.matched_count;
+          continue;
+        }
+        if (event.type === 'result') {
+          nextItems.push(event.entry);
+          currentDir = event.entry.parent_path ?? parentPath(event.entry.path);
+          continue;
+        }
+        scannedDirs = event.scanned_dirs;
+        matchedCount = event.matched_count;
+        running = false;
+        if (event.status === 'failed') {
+          error = event.error ?? 'Search failed';
+        } else {
+          error = undefined;
+        }
+      }
+      return {
+        ...p,
+        items: nextItems,
+        search: {
+          ...p.search,
+          currentDir,
+          scannedDirs,
+          matchedCount,
+          running,
+          error,
+          eventCursor: nextSeq,
+        },
+      };
+    }));
+  }
+
+  async function pollSearch(paneId: string, searchId: string) {
+    let cursor = 0;
+    const source = `SEARCH/${searchId.slice(0, 8)}`;
+    while (true) {
+      const pane = getPane(paneId);
+      const hasDifferentSearchId = !!pane?.search.searchId && pane.search.searchId !== searchId;
+      if (!pane || pane.mode !== 'search' || hasDifferentSearchId) {
+        try {
+          await api.cancelSearch(searchId);
+        } catch {
+          // Ignore cancellation races.
+        }
+        return;
+      }
+
+      try {
+        const payload = await api.searchEvents(searchId, cursor);
+        const latest = getPane(paneId);
+        if (!latest || latest.search.searchId !== searchId) {
+          return;
+        }
+        for (const event of payload.events) {
+          if (event.type === 'progress') {
+            pushDiagnostics('info', source, `pane=${paneId} scanning=${event.current_dir} scanned_dirs=${event.scanned_dirs} matched=${event.matched_count}`);
+          } else if (event.type === 'result') {
+            pushDiagnostics('debug', source, `pane=${paneId} match=${event.entry.path}`);
+          } else if (event.status === 'failed') {
+            pushDiagnostics('error', source, `pane=${paneId} search failed scanned_dirs=${event.scanned_dirs} matched=${event.matched_count} error=${event.error ?? 'unknown'}`);
+          } else if (event.status === 'cancelled') {
+            pushDiagnostics('warning', source, `pane=${paneId} search cancelled scanned_dirs=${event.scanned_dirs} matched=${event.matched_count}`);
+          } else {
+            pushDiagnostics('info', source, `pane=${paneId} search complete scanned_dirs=${event.scanned_dirs} matched=${event.matched_count}`);
+          }
+        }
+        applySearchEvents(paneId, payload.events, payload.next_seq);
+        cursor = payload.next_seq;
+        if (payload.done) {
+          return;
+        }
+      } catch (error) {
+        pushDiagnostics('error', source, `pane=${paneId} search poll error: ${String(error)}`);
+        clearPaneSearchRuntime(paneId, String(error));
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    }
+  }
+
+  async function startPaneSearch(paneId: string) {
+    const pane = getPane(paneId);
+    if (!pane?.currentPath) return;
+    await cancelPaneSearch(paneId);
+
+    const minSizeRaw = pane.search.minSizeMb.trim();
+    const parsedMinSizeMb = minSizeRaw ? Number(minSizeRaw) : Number.NaN;
+    if (minSizeRaw && (!Number.isFinite(parsedMinSizeMb) || parsedMinSizeMb < 0)) {
+      clearPaneSearchRuntime(paneId, 'Min size must be a non-negative number.');
+      return;
+    }
+    const minSizeMb = minSizeRaw ? parsedMinSizeMb : null;
+
+    setPanes((prev) => prev.map((p) => p.id === paneId ? {
+      ...p,
+      items: [],
+      error: undefined,
+      search: {
+        ...p.search,
+        running: true,
+        scannedDirs: 0,
+        matchedCount: 0,
+        currentDir: undefined,
+        error: undefined,
+        eventCursor: 0,
+      },
+    } : p));
+
+    try {
+      const created = await api.startSearch({
+        root_path: pane.currentPath,
+        filename_query: pane.search.filenameQuery || '*',
+        literal: pane.search.literal,
+        min_size_mb: minSizeMb,
+      });
+      pushDiagnostics(
+        'info',
+        `SEARCH/${created.search_id.slice(0, 8)}`,
+        `pane=${paneId} search started root=${pane.currentPath} query=${pane.search.filenameQuery || '*'} literal=${String(pane.search.literal)} min_size_mb=${minSizeMb ?? 'none'}`
+      );
+      setPanes((prev) => prev.map((p) => p.id === paneId ? {
+        ...p,
+        search: { ...p.search, searchId: created.search_id, running: true },
+      } : p));
+      pollSearch(paneId, created.search_id).catch(console.error);
+    } catch (error) {
+      pushDiagnostics('error', `SEARCH/${paneId}`, `pane=${paneId} failed to start search: ${String(error)}`);
+      clearPaneSearchRuntime(paneId, String(error));
+    }
+  }
+
   async function loadPane(path: string, paneId: string) {
     setPanes((prev) => prev.map((p) => p.id === paneId ? { ...p, loading: true, error: undefined } : p));
     try {
@@ -160,14 +395,15 @@ export function App() {
     }
   }
 
-  function navigatePane(paneId: string, path: string, pushHistory = true) {
+  async function navigatePane(paneId: string, path: string, pushHistory = true) {
+    await cancelPaneSearch(paneId);
     setPanes((prev) => prev.map((p) => {
       if (p.id !== paneId) return p;
       const nextHistory = pushHistory ? [...p.history.slice(0, p.historyIndex + 1), path] : p.history;
       const nextIndex = pushHistory ? nextHistory.length - 1 : p.historyIndex;
-      return { ...p, currentPath: path, history: nextHistory, historyIndex: nextIndex, selected: new Set<string>() };
+      return { ...p, mode: 'browse', currentPath: path, history: nextHistory, historyIndex: nextIndex, selected: new Set<string>() };
     }));
-    loadPane(path, paneId).catch(console.error);
+    await loadPane(path, paneId);
   }
 
   async function transferSelected(sourcePaneId: string, targetPaneId: string, move: boolean) {
@@ -230,7 +466,7 @@ export function App() {
   function openRemoteInActivePane(path: string) {
     const active = panes.find((pane) => pane.id === activePaneId);
     if (active) {
-      navigatePane(active.id, path);
+      navigatePane(active.id, path).catch(console.error);
       return;
     }
     const pane = newPane(path);
@@ -247,6 +483,7 @@ export function App() {
   }
 
   function closePane(paneId: string) {
+    cancelPaneSearch(paneId).catch(console.error);
     setPanes((prev) => prev.filter((p) => p.id !== paneId));
     if (activePaneId === paneId) {
       const next = panes.find((p) => p.id !== paneId);
@@ -294,28 +531,49 @@ export function App() {
               })()}
               onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
               onActivate={() => setActivePaneId(pane.id)}
-              onPathSubmit={(path) => navigatePane(pane.id, path)}
-              onRefresh={() => pane.currentPath && loadPane(pane.currentPath, pane.id).catch(console.error)}
-              onNavigate={(path) => navigatePane(pane.id, path)}
-              onBack={() => {
+              onPathSubmit={(path) => navigatePane(pane.id, path).catch(console.error)}
+              onRefresh={async () => {
+                if (!pane.currentPath) return;
+                await cancelPaneSearch(pane.id);
+                setPaneMode(pane.id, 'browse');
+                await loadPane(pane.currentPath, pane.id);
+              }}
+              onNavigate={(path) => navigatePane(pane.id, path).catch(console.error)}
+              onBack={async () => {
                 if (pane.historyIndex <= 0) return;
                 const idx = pane.historyIndex - 1;
                 const path = pane.history[idx];
+                await cancelPaneSearch(pane.id);
                 setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
-                loadPane(path, pane.id).catch(console.error);
+                setPaneMode(pane.id, 'browse');
+                await loadPane(path, pane.id);
               }}
-              onForward={() => {
+              onForward={async () => {
                 if (pane.historyIndex >= pane.history.length - 1) return;
                 const idx = pane.historyIndex + 1;
                 const path = pane.history[idx];
+                await cancelPaneSearch(pane.id);
                 setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
-                loadPane(path, pane.id).catch(console.error);
+                setPaneMode(pane.id, 'browse');
+                await loadPane(path, pane.id);
               }}
-              onToggleSelectionMode={() => setPanes((prev) => prev.map((p) => p.id === pane.id ? {
+              onSetMode={async (mode) => {
+                const current = getPane(pane.id);
+                if (current?.mode === mode) return;
+                if (mode !== 'search') {
+                  await cancelPaneSearch(pane.id);
+                }
+                setPaneMode(pane.id, mode);
+                if (current?.mode === 'search' && current.currentPath && mode !== 'search') {
+                  await loadPane(current.currentPath, pane.id);
+                }
+              }}
+              onSearchChange={(patch) => setPanes((prev) => prev.map((p) => p.id === pane.id ? {
                 ...p,
-                mode: p.mode === 'select' ? 'browse' : 'select',
-                selected: new Set<string>(),
+                search: { ...p.search, ...patch },
               } : p))}
+              onStartSearch={() => startPaneSearch(pane.id).catch(console.error)}
+              onCancelSearch={() => cancelPaneSearch(pane.id).catch(console.error)}
               onToggleSelect={(path) => setPanes((prev) => prev.map((p) => {
                 if (p.id !== pane.id) return p;
                 const next = new Set(p.selected);
@@ -324,7 +582,7 @@ export function App() {
               }))}
               onFileClick={(path) => setPanes((prev) => prev.map((p) => {
                 if (p.id !== pane.id) return p;
-                if (p.mode === 'browse') {
+                if (p.mode === 'browse' || p.mode === 'search') {
                   return { ...p, mode: 'select', selected: new Set<string>([path]) };
                 }
                 const next = new Set(p.selected);
@@ -358,7 +616,7 @@ export function App() {
                   await loadSettings();
                 }} />
               )}
-              {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} />}
+              {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} logs={diagnosticsLogs} />}
             </div>
           )}
         </aside>

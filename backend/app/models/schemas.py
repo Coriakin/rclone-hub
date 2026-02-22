@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field
 
 
 class Entry(BaseModel):
     name: str
     path: str
+    parent_path: str | None = None
     is_dir: bool
     size: int = 0
     mod_time: datetime | None = None
@@ -96,3 +98,46 @@ class HealthResponse(BaseModel):
     rclone_available: bool
     rclone_version: str | None = None
     rclone_config_file: str | None = None
+
+
+class SearchCreateRequest(BaseModel):
+    root_path: str
+    filename_query: str = "*"
+    literal: bool = False
+    min_size_mb: float | None = Field(default=None, ge=0)
+
+
+class SearchCreateResponse(BaseModel):
+    search_id: str
+
+
+class SearchProgressEvent(BaseModel):
+    seq: int
+    type: Literal["progress"]
+    current_dir: str
+    scanned_dirs: int
+    matched_count: int
+
+
+class SearchResultEvent(BaseModel):
+    seq: int
+    type: Literal["result"]
+    entry: Entry
+
+
+class SearchDoneEvent(BaseModel):
+    seq: int
+    type: Literal["done"]
+    status: Literal["success", "cancelled", "failed"]
+    scanned_dirs: int
+    matched_count: int
+    error: str | None = None
+
+
+SearchEvent = Annotated[Union[SearchProgressEvent, SearchResultEvent, SearchDoneEvent], Field(discriminator="type")]
+
+
+class SearchEventsResponse(BaseModel):
+    events: list[SearchEvent]
+    done: bool
+    next_seq: int
