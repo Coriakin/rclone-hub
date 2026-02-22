@@ -1,1 +1,0 @@
-{"root":["./src/main.tsx","./src/api/client.ts","./src/app/app.test.tsx","./src/app/app.tsx","./src/components/confirmdialog.tsx","./src/components/diagnosticspanel.tsx","./src/components/filelist.tsx","./src/components/pane.tsx","./src/components/settingspanel.tsx","./src/components/transferqueuepanel.tsx","./src/state/types.ts"],"version":"5.9.3"}
