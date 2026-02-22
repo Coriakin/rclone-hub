@@ -1,6 +1,8 @@
 # rclone-hub
 
-Mac-first, cross-platform local web UI for rclone remotes with multi-pane navigation and safe transfers.
+Cross-platform local web UI for rclone remotes with multi-pane navigation and safe transfers.
+
+> Work in progress: this project is currently being built to scratch a personal itch, and is evolving as that need evolves.
 
 ![rclone-hub screenshot](./screenshot1.jpg)
 
