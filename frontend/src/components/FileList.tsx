@@ -26,6 +26,35 @@ export function FileList({
   onOpenInNewPane,
   onDropTarget,
 }: Props) {
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  function formatSize(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = bytes / 1024;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const precision = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+    return `${size.toFixed(precision)} ${units[unitIndex]}`;
+  }
+
+  function formatModTime(value?: string): string {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '-';
+    return dateFormatter.format(parsed);
+  }
+
   function readDropPayload(event: React.DragEvent): { sources: string[]; sourcePaneId?: string } | null {
     const custom = event.dataTransfer.getData('application/x-rclone-paths');
     const fallback = event.dataTransfer.getData('text/plain');
@@ -88,6 +117,12 @@ export function FileList({
             <span className={`entry-icon ${entry.is_dir ? 'dir' : 'file'}`} aria-hidden="true" />
             <span className="entry-name">{entry.name || entry.path}</span>
             <span className="entry-kind">{entry.is_dir ? 'Folder' : 'File'}</span>
+            <span className="entry-size" title={entry.is_dir ? '' : `${entry.size} bytes`}>
+              {entry.is_dir ? '-' : formatSize(entry.size)}
+            </span>
+            <span className="entry-modified" title={entry.mod_time ?? ''}>
+              {formatModTime(entry.mod_time)}
+            </span>
           </button>
         </div>
       ))}
