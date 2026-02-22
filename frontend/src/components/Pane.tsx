@@ -67,8 +67,9 @@ export function Pane({
     <section className={`pane ${isActive ? 'active' : ''}`} onClick={onActivate}>
       <div className="pane-toolbar">
         <div className="pane-toolbar-main">
-          <button onClick={onBack} disabled={pane.historyIndex <= 0}>Back</button>
-          <button onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1}>Forward</button>
+          <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane">X</button>
+          <button className="ghost-btn" onClick={onBack} disabled={pane.historyIndex <= 0}>Back</button>
+          <button className="ghost-btn" onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1}>Forward</button>
           <form onSubmit={(e) => {
             e.preventDefault();
             const nextPath = pathDraft.trim();
@@ -90,7 +91,6 @@ export function Pane({
           >
             ↻
           </button>
-          <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane">X</button>
         </div>
         <div className="pane-toolbar-modes">
           <div className="mode-group" role="group" aria-label="Pane mode">
@@ -149,7 +149,7 @@ export function Pane({
               />
             </label>
             {!pane.search.running ? (
-              <button onClick={onStartSearch} disabled={!pane.currentPath}>Start search</button>
+              <button className="primary-btn" onClick={onStartSearch} disabled={!pane.currentPath}>Start search</button>
             ) : (
               <button className="danger-btn" onClick={onCancelSearch}>Stop search</button>
             )}
