@@ -9,7 +9,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import time
-from typing import Callable
+from typing import BinaryIO, Callable, Iterator
 
 from app.models.schemas import Entry
 
@@ -26,6 +26,41 @@ class CommandResult:
     stderr: str
     duration_ms: int
     timed_out: bool = False
+
+
+@dataclass
+class BinaryStreamHandle:
+    args: list[str]
+    process: subprocess.Popen[bytes]
+    stdout: BinaryIO
+    stderr: BinaryIO | None
+
+    def iter_chunks(self, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
+        while True:
+            chunk = self.stdout.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+        returncode = self.process.wait()
+        stderr_raw = self.stderr.read() if self.stderr is not None else b""
+        stderr_text = stderr_raw.decode("utf-8", "replace").strip()
+        if returncode != 0:
+            raise RcloneError(f"command failed: {RcloneClient._as_cmd(self.args)}\n{stderr_text}")
+
+    def close(self) -> None:
+        try:
+            self.stdout.close()
+        except Exception:
+            pass
+        if self.stderr is not None:
+            try:
+                self.stderr.close()
+            except Exception:
+                pass
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
 
 
 class RcloneClient:
@@ -378,3 +413,20 @@ class RcloneClient:
                 should_cancel=should_cancel,
             )
         return self.run(["copy", str(source_local_dir), destination_remote_dir, "--progress=false"])
+
+    def open_cat_stream(self, remote_path: str) -> BinaryStreamHandle:
+        cmd = [self.binary, *self.base_flags, "cat", remote_path]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=False,
+            )
+        except OSError as exc:
+            raise RcloneError(f"failed to start command: {self._as_cmd(cmd)}\n{exc}") from exc
+        if proc.stdout is None:
+            proc.kill()
+            proc.wait()
+            raise RcloneError(f"failed to open stdout stream: {self._as_cmd(cmd)}")
+        return BinaryStreamHandle(args=cmd, process=proc, stdout=proc.stdout, stderr=proc.stderr)

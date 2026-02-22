@@ -10,6 +10,7 @@ import type { PaneState } from '../state/types';
 let paneCounter = 0;
 const APPEARANCE_KEY = 'rcloneHub.appearance';
 type Appearance = 'light' | 'dark';
+const PREVIEWABLE_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif']);
 
 function newPane(path = ''): PaneState {
   paneCounter += 1;
@@ -65,6 +66,14 @@ export function App() {
     sources: [],
   });
   const [settings, setSettings] = useState<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' } | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ open: boolean; remotePath: string; fileName: string; paneId: string | null }>({
+    open: false,
+    remotePath: '',
+    fileName: '',
+    paneId: null,
+  });
+  const [imagePreviewLoading, setImagePreviewLoading] = useState<boolean>(false);
+  const [imagePreviewError, setImagePreviewError] = useState<string | null>(null);
   const [targetPaneBySourcePane, setTargetPaneBySourcePane] = useState<Record<string, string>>({});
   const [highlightedByPane, setHighlightedByPane] = useState<Record<string, string[]>>({});
   const pendingTransferTargetsRef = useRef<Record<string, { targetPaneId: string }>>({});
@@ -141,6 +150,19 @@ export function App() {
       Object.values(highlightTimersRef.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
+
+  useEffect(() => {
+    if (!imagePreview.open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setImagePreview({ open: false, remotePath: '', fileName: '', paneId: null });
+        setImagePreviewLoading(false);
+        setImagePreviewError(null);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imagePreview.open]);
 
   useEffect(() => {
     for (const job of jobs) {
@@ -512,6 +534,59 @@ export function App() {
     setOpenTabs((prev) => ({ ...prev, [tab]: !prev[tab] }));
   }
 
+  function basename(path: string): string {
+    if (!path.includes(':')) {
+      const segments = path.split('/').filter(Boolean);
+      return segments.length ? segments[segments.length - 1] : path;
+    }
+    const [, rel] = path.split(':', 2);
+    const normalized = rel.replace(/\/+$/g, '');
+    if (!normalized) return path;
+    const segments = normalized.split('/');
+    return segments.length ? segments[segments.length - 1] : path;
+  }
+
+  function isPreviewableImage(path: string): boolean {
+    const name = basename(path).toLowerCase();
+    const extParts = name.split('.');
+    const ext = name.includes('.') && extParts.length ? extParts[extParts.length - 1] : '';
+    return PREVIEWABLE_IMAGE_EXTENSIONS.has(ext);
+  }
+
+  function openImagePreview(remotePath: string, paneId: string) {
+    setImagePreviewLoading(true);
+    setImagePreviewError(null);
+    setImagePreview({
+      open: true,
+      remotePath,
+      fileName: basename(remotePath),
+      paneId,
+    });
+  }
+
+  function closeImagePreview() {
+    setImagePreview({ open: false, remotePath: '', fileName: '', paneId: null });
+    setImagePreviewLoading(false);
+    setImagePreviewError(null);
+  }
+
+  function handleFileClick(paneId: string, path: string) {
+    const pane = panesRef.current.find((p) => p.id === paneId);
+    if (pane?.mode === 'browse' && isPreviewableImage(path)) {
+      openImagePreview(path, paneId);
+      return;
+    }
+    setPanes((prev) => prev.map((p) => {
+      if (p.id !== paneId) return p;
+      if (p.mode === 'browse' || p.mode === 'search') {
+        return { ...p, mode: 'select', selected: new Set<string>([path]) };
+      }
+      const next = new Set(p.selected);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return { ...p, selected: next };
+    }));
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -601,15 +676,7 @@ export function App() {
                 if (next.has(path)) next.delete(path); else next.add(path);
                 return { ...p, selected: next };
               }))}
-              onFileClick={(path) => setPanes((prev) => prev.map((p) => {
-                if (p.id !== pane.id) return p;
-                if (p.mode === 'browse' || p.mode === 'search') {
-                  return { ...p, mode: 'select', selected: new Set<string>([path]) };
-                }
-                const next = new Set(p.selected);
-                if (next.has(path)) next.delete(path); else next.add(path);
-                return { ...p, selected: next };
-              }))}
+              onFileClick={(path) => handleFileClick(pane.id, path)}
               onOpenInNewPane={(path) => openPathInNewPane(path)}
               onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
               onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
@@ -688,6 +755,48 @@ export function App() {
               </button>
               <button onClick={() => executeDrop(false).catch(console.error)}>Copy</button>
               <button onClick={() => executeDrop(true).catch(console.error)}>Move</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {imagePreview.open && (
+        <div className="dialog-backdrop" onClick={closeImagePreview}>
+          <div className="dialog image-preview-dialog" onClick={(event) => event.stopPropagation()}>
+            <h3>{imagePreview.fileName}</h3>
+            <div className="image-preview-body">
+              {imagePreviewLoading && (
+                <div className="image-preview-loading" role="status" aria-live="polite">
+                  <div className="progressbar indeterminate" aria-hidden="true">
+                    <span />
+                  </div>
+                  <div className="search-progress-text">Loading image...</div>
+                </div>
+              )}
+              {imagePreviewError && (
+                <div className="pane-error image-preview-error">
+                  {imagePreviewError}
+                </div>
+              )}
+              <img
+                className={imagePreviewLoading ? 'is-loading' : ''}
+                src={api.fileContentUrl(imagePreview.remotePath, 'inline')}
+                alt={imagePreview.fileName}
+                onLoad={() => {
+                  setImagePreviewLoading(false);
+                  setImagePreviewError(null);
+                }}
+                onError={() => {
+                  setImagePreviewLoading(false);
+                  setImagePreviewError('Failed to load image preview.');
+                }}
+              />
+            </div>
+            <div className="dialog-actions">
+              <button onClick={closeImagePreview}>Close</button>
+              <a className="button-link" href={api.fileContentUrl(imagePreview.remotePath, 'attachment')} download={imagePreview.fileName}>
+                Download
+              </a>
             </div>
           </div>
         </div>

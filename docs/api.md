@@ -5,6 +5,7 @@ Base: `http://127.0.0.1:8000/api`
 - `GET /health`
 - `GET /remotes`
 - `GET /list?remote_path=<remote:path>&recursive=false`
+- `GET /files/content?remote_path=<remote:path>&disposition=<inline|attachment>`
 - `POST /searches`
 - `GET /searches/{search_id}/events?after_seq=0`
 - `POST /searches/{search_id}/cancel`
@@ -28,3 +29,8 @@ Base: `http://127.0.0.1:8000/api`
   "verify_mode": "strict"
 }
 ```
+
+## File content endpoint
+
+- Use `disposition=inline` to render previewable image files (`jpg`, `jpeg`, `png`, `gif`) directly.
+- Use `disposition=attachment` to force download behavior.

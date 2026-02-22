@@ -910,11 +910,77 @@ select {
   gap: 8px;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(16, 24, 40, 0.15);
+  background: linear-gradient(180deg, #ffffff, #edf2f8);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  height: 34px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  border-color: rgba(16, 24, 40, 0.28);
+}
+
+.image-preview-dialog {
+  width: min(920px, 96vw);
+}
+
+.image-preview-body {
+  display: grid;
+  place-items: center;
+  margin-bottom: 10px;
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  background: rgba(245, 248, 252, 0.7);
+}
+
+.image-preview-loading {
+  width: min(420px, 92%);
+  display: grid;
+  gap: 8px;
+}
+
+.image-preview-body img {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 760px);
+  object-fit: contain;
+}
+
+.image-preview-body img.is-loading {
+  visibility: hidden;
+}
+
+.image-preview-error {
+  width: 100%;
+  text-align: center;
+}
+
 :root[data-theme='dark'] button {
   border-color: color-mix(in srgb, var(--separator) 85%, #445065);
 }
 
 :root[data-theme='dark'] button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--separator) 90%, #7386a2);
+}
+
+:root[data-theme='dark'] .button-link {
+  border-color: color-mix(in srgb, var(--separator) 85%, #445065);
+  background: linear-gradient(180deg, #2b3443, #202937);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .button-link:hover {
   border-color: color-mix(in srgb, var(--separator) 90%, #7386a2);
 }
 
@@ -1061,6 +1127,11 @@ select {
 :root[data-theme='dark'] .dialog {
   background: linear-gradient(180deg, rgba(33, 42, 56, 0.95), rgba(23, 31, 42, 0.95));
   border-color: rgba(170, 186, 206, 0.2);
+}
+
+:root[data-theme='dark'] .image-preview-body {
+  border-color: rgba(170, 186, 206, 0.24);
+  background: rgba(20, 27, 37, 0.82);
 }
 
 @media (max-width: 1280px) {
