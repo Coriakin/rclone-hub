@@ -2,12 +2,22 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.schemas import CancelRequest, DeleteRequest, HealthResponse, Settings, TransferRequest
+from app.models.schemas import (
+    CancelRequest,
+    DeleteRequest,
+    HealthResponse,
+    SearchCreateRequest,
+    SearchCreateResponse,
+    SearchEventsResponse,
+    Settings,
+    TransferRequest,
+)
 from app.services.rclone import RcloneClient, RcloneError
+from app.services.searches import SearchManager
 from app.services.transfers import TransferManager
 
 
-def build_router(rclone: RcloneClient, transfers: TransferManager, settings_store) -> APIRouter:
+def build_router(rclone: RcloneClient, transfers: TransferManager, searches: SearchManager, settings_store) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     @router.get("/health", response_model=HealthResponse)
@@ -33,6 +43,33 @@ def build_router(rclone: RcloneClient, transfers: TransferManager, settings_stor
             return {"items": [item.model_dump() for item in items]}
         except RcloneError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/searches", response_model=SearchCreateResponse)
+    async def create_search(req: SearchCreateRequest) -> SearchCreateResponse:
+        try:
+            search_id = await searches.create(
+                root_path=req.root_path,
+                filename_query=req.filename_query,
+                literal=req.literal,
+                min_size_mb=req.min_size_mb,
+            )
+            return SearchCreateResponse(search_id=search_id)
+        except RcloneError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/searches/{search_id}/events", response_model=SearchEventsResponse)
+    async def poll_search(search_id: str, after_seq: int = Query(0, ge=0)) -> SearchEventsResponse:
+        try:
+            return await searches.poll(search_id, after_seq)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="search not found") from None
+
+    @router.post("/searches/{search_id}/cancel")
+    async def cancel_search(search_id: str) -> dict[str, bool]:
+        found = await searches.cancel(search_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="search not found")
+        return {"ok": True}
 
     @router.post("/jobs/copy")
     def create_copy(req: TransferRequest):

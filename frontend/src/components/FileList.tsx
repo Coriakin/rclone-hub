@@ -5,6 +5,7 @@ type Props = {
   paneId: string;
   entries: Entry[];
   selectionMode: boolean;
+  showPathColumn?: boolean;
   selected: Set<string>;
   highlighted: Set<string>;
   onToggleSelect: (path: string) => void;
@@ -18,6 +19,7 @@ export function FileList({
   paneId,
   entries,
   selectionMode,
+  showPathColumn = false,
   selected,
   highlighted,
   onToggleSelect,
@@ -26,7 +28,7 @@ export function FileList({
   onOpenInNewPane,
   onDropTarget,
 }: Props) {
-  const [sortKey, setSortKey] = useState<'size' | 'mod_time' | null>(null);
+  const [sortKey, setSortKey] = useState<'size' | 'mod_time' | 'path' | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -58,7 +60,7 @@ export function FileList({
     return dateFormatter.format(parsed);
   }
 
-  function toggleSort(nextKey: 'size' | 'mod_time') {
+  function toggleSort(nextKey: 'size' | 'mod_time' | 'path') {
     if (sortKey !== nextKey) {
       setSortKey(nextKey);
       setSortDir('asc');
@@ -80,6 +82,12 @@ export function FileList({
         if (av !== bv) return (av - bv) * direction;
         return a.name.localeCompare(b.name);
       }
+      if (sortKey === 'path') {
+        const ap = parentPath(a).toLowerCase();
+        const bp = parentPath(b).toLowerCase();
+        if (ap !== bp) return ap.localeCompare(bp) * direction;
+        return a.name.localeCompare(b.name);
+      }
       const at = a.mod_time ? Date.parse(a.mod_time) : Number.NaN;
       const bt = b.mod_time ? Date.parse(b.mod_time) : Number.NaN;
       const aMissing = Number.isNaN(at);
@@ -91,6 +99,17 @@ export function FileList({
       return a.name.localeCompare(b.name);
     });
   }, [entries, sortDir, sortKey]);
+
+  function parentPath(entry: Entry): string {
+    if (entry.parent_path) return entry.parent_path;
+    if (!entry.path.includes(':')) return '';
+    const [remote, rel] = entry.path.split(':', 2);
+    const normalized = rel.replace(/^\/+|\/+$/g, '');
+    if (!normalized) return `${remote}:`;
+    const parts = normalized.split('/');
+    if (parts.length <= 1) return `${remote}:`;
+    return `${remote}:${parts.slice(0, -1).join('/')}`;
+  }
 
   function readDropPayload(event: React.DragEvent): { sources: string[]; sourcePaneId?: string } | null {
     const custom = event.dataTransfer.getData('application/x-rclone-paths');
@@ -115,9 +134,14 @@ export function FileList({
     }}>
       <div className="file-header">
         {selectionMode && <span className="file-header-check" />}
-        <div className="file-header-main">
+        <div className={`file-header-main ${showPathColumn ? 'with-path' : ''}`}>
           <span className="file-header-icon" />
           <span className="file-header-name">Name</span>
+          {showPathColumn && (
+            <button className="file-header-btn file-header-path" onClick={() => toggleSort('path')}>
+              Path{sortKey === 'path' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+            </button>
+          )}
           <span className="file-header-kind">Type</span>
           <button className="file-header-btn" onClick={() => toggleSort('size')}>
             Size{sortKey === 'size' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -164,9 +188,10 @@ export function FileList({
               onChange={() => onToggleSelect(entry.path)}
             />
           )}
-          <button className="entry-btn" onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}>
+          <button className={`entry-btn ${showPathColumn ? 'with-path' : ''}`} onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}>
             <span className={`entry-icon ${entry.is_dir ? 'dir' : 'file'}`} aria-hidden="true" />
             <span className="entry-name">{entry.name || entry.path}</span>
+            {showPathColumn && <span className="entry-path" title={parentPath(entry)}>{parentPath(entry)}</span>}
             <span className="entry-kind">{entry.is_dir ? 'Folder' : 'File'}</span>
             <span className="entry-size" title={entry.is_dir ? '' : `${entry.size} bytes`}>
               {entry.is_dir ? '-' : formatSize(entry.size)}

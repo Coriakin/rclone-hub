@@ -5,6 +5,9 @@ Base: `http://127.0.0.1:8000/api`
 - `GET /health`
 - `GET /remotes`
 - `GET /list?remote_path=<remote:path>&recursive=false`
+- `POST /searches`
+- `GET /searches/{search_id}/events?after_seq=0`
+- `POST /searches/{search_id}/cancel`
 - `POST /jobs/copy`
 - `POST /jobs/move`
 - `POST /jobs/delete`

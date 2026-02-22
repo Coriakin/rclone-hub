@@ -201,6 +201,39 @@ class RcloneClient:
             )
         return entries
 
+    def list_cancellable(
+        self,
+        remote_path: str,
+        recursive: bool = False,
+        should_cancel: Callable[[], bool] | None = None,
+        timeout: int | None = None,
+    ) -> list[Entry]:
+        args = ["lsjson", remote_path, "--hash", "--metadata", "--files-only=false"]
+        if recursive:
+            args.append("--recursive")
+        result = self.run_with_progress(
+            args,
+            on_progress=lambda _line: None,
+            should_cancel=should_cancel,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+        payload = json.loads(result.stdout or "[]")
+        entries: list[Entry] = []
+        for item in payload:
+            entries.append(
+                Entry(
+                    name=item.get("Name", ""),
+                    path=self.join_remote(remote_path, item.get("Path", item.get("Name", ""))),
+                    is_dir=bool(item.get("IsDir", False)),
+                    size=int(item.get("Size", 0)),
+                    mod_time=self._parse_time(item.get("ModTime")),
+                    hashes=item.get("Hashes", {}) or {},
+                )
+            )
+        return entries
+
     def stat(self, remote_path: str) -> Entry:
         result = self.run_checked(["lsjson", remote_path, "--stat", "--hash", "--metadata"])
         item = json.loads(result.stdout or "{}")
