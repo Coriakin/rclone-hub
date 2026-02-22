@@ -86,6 +86,11 @@ describe('App image preview', () => {
   });
 
   test('browse mode opens image preview, and select mode keeps selection behavior', async () => {
+    const remoteButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'photos:');
+    expect(remoteButton).toBeTruthy();
+    remoteButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
     await waitFor(() => {
       expect(container.textContent).toContain('cat.jpg');
     });

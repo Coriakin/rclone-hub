@@ -35,6 +35,7 @@ function newPane(path = ''): PaneState {
 }
 
 export function App() {
+  const initialPane = useMemo(() => newPane(''), []);
   const [appearance, setAppearance] = useState<Appearance>(() => {
     try {
       const saved = window.localStorage.getItem(APPEARANCE_KEY);
@@ -49,8 +50,8 @@ export function App() {
     diagnostics: false,
   });
   const [remotes, setRemotes] = useState<string[]>([]);
-  const [panes, setPanes] = useState<PaneState[]>([newPane('')]);
-  const [activePaneId, setActivePaneId] = useState<string>('pane-1');
+  const [panes, setPanes] = useState<PaneState[]>([initialPane]);
+  const [activePaneId, setActivePaneId] = useState<string>(initialPane.id);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [diagnosticsLogs, setDiagnosticsLogs] = useState<DiagnosticsLog[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null }>({ open: false, paneId: null });
@@ -81,14 +82,9 @@ export function App() {
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const panesRef = useRef<PaneState[]>(panes);
 
-  const activePane = useMemo(() => panes.find((p) => p.id === activePaneId), [panes, activePaneId]);
-
   async function refreshRemotes() {
     const r = await api.remotes();
     setRemotes(r.remotes);
-    if (!activePane?.currentPath && r.remotes[0]) {
-      navigatePane(activePaneId, r.remotes[0]).catch(console.error);
-    }
   }
 
   async function refreshJobs() {
@@ -130,6 +126,13 @@ export function App() {
   useEffect(() => {
     panesRef.current = panes;
   }, [panes]);
+
+  useEffect(() => {
+    if (!panes.length) return;
+    if (!panes.some((pane) => pane.id === activePaneId)) {
+      setActivePaneId(panes[0].id);
+    }
+  }, [panes, activePaneId]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = appearance;
@@ -503,9 +506,15 @@ export function App() {
   }
 
   function openRemoteInActivePane(path: string) {
-    const active = panes.find((pane) => pane.id === activePaneId);
-    if (active) {
-      navigatePane(active.id, path).catch(console.error);
+    const targetPane =
+      panes.find((pane) => pane.id === activePaneId)
+      ?? panes.find((pane) => !pane.currentPath)
+      ?? panes[0];
+    if (targetPane) {
+      if (activePaneId !== targetPane.id) {
+        setActivePaneId(targetPane.id);
+      }
+      navigatePane(targetPane.id, path).catch(console.error);
       return;
     }
     const pane = newPane(path);
