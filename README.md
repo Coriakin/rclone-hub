@@ -1,69 +1,46 @@
 # rclone-hub
 
-Cross-platform local web UI for rclone remotes with multi-pane navigation and safe transfers.
+Manage your `rclone` remotes from a clean local web app built for browsing and moving files confidently.
 
-> Work in progress: this project is currently being built to scratch a personal itch, and is evolving as that need evolves.
+rclone-hub gives you a visual, multi-pane workspace for exploring remotes, searching across directories, and running transfers without living in terminal commands all day.
 
 ![rclone-hub screenshot](./screenshot1.jpg)
 
-## Structure
+## Features
 
-- `/backend`: FastAPI API + transfer engine + sqlite persistence.
-- `/frontend`: React/Vite multi-pane UI.
-- `/docs`: architecture and safety docs.
+- Multi-pane navigation for side-by-side browsing across remotes.
+- Built-in search with live progress so you can quickly find files across large remote trees.
+- Transfer-focused workflow designed to make file moves clear and predictable.
+- Local-first web UI that runs on your machine.
+- Cross-platform setup using a single startup script.
+- Built around `rclone` remotes so you can keep using the storage you already have.
 
-## One-command dev run
+## Quick Start
 
-Run backend + frontend together:
+Clone or open this repo, then run:
 
 ```bash
-cd /path/to/rclone-hub
+git clone https://github.com/andreas-io/rclone-hub.git
+cd rclone-hub
 ./scripts/dev.sh
 ```
 
-What it does:
-- Creates backend virtualenv if missing.
-- Installs backend/frontend deps if missing.
-- Auto-picks free ports if default `8000` or `5173` are already in use.
-- Wires frontend to the chosen backend API automatically.
+Then open the local URL shown in your terminal (typically `http://127.0.0.1:5173`).
 
-Optional overrides:
+For advanced defaults (for example fixed ports), you can use the root `.env` file. See the docs section below for deeper setup details.
 
-```bash
-BACKEND_PORT=8100 FRONTEND_PORT=5174 ./scripts/dev.sh
-```
+## Who It's For
 
-Or configure defaults in a root `.env` file:
+- People who manage files across multiple cloud or network remotes with `rclone`.
+- Users who want a visual workflow instead of a command-heavy routine.
+- Anyone who needs faster side-by-side file operations across storage backends.
 
-```bash
-cp .env.example .env
-```
+## Documentation
 
-Then edit:
+- `docs/architecture.md` for system design details.
+- `docs/transfer-safety.md` for transfer behavior and safety notes.
+- `docs/api.md` for backend API details.
 
-```env
-BACKEND_PORT=8100
-FRONTEND_PORT=5174
-```
+## Current Status
 
-When ports are set in `.env`, `./scripts/dev.sh` treats them as fixed and exits with a clear error if they are already in use.
-
-## Backend quickstart
-
-```bash
-cd /path/to/rclone-hub/backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-## Frontend quickstart
-
-```bash
-cd /path/to/rclone-hub/frontend
-npm install
-npm run dev
-```
-
-Then open `http://127.0.0.1:5173`.
+This is an active work in progress. Core workflows are usable, and the product is continuing to evolve based on real usage and feedback.
