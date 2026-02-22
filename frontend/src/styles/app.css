@@ -243,6 +243,63 @@ input, select {
     repeating-linear-gradient(180deg, transparent 0 32px, rgba(27, 76, 176, 0.03) 32px 33px);
 }
 
+.file-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid #d6e3fb;
+  margin-bottom: 4px;
+}
+
+.file-header-check {
+  width: 16px;
+  height: 16px;
+}
+
+.file-header-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 52px 84px 146px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.file-header-icon {
+  width: 20px;
+  height: 18px;
+}
+
+.file-header-name,
+.file-header-kind {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.file-header-kind {
+  text-align: right;
+}
+
+.file-header-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.file-header-btn:hover {
+  color: var(--ink);
+}
+
 .file-row {
   display: flex;
   gap: 8px;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Entry } from '../api/client';
 
 type Props = {
@@ -26,6 +26,9 @@ export function FileList({
   onOpenInNewPane,
   onDropTarget,
 }: Props) {
+  const [sortKey, setSortKey] = useState<'size' | 'mod_time' | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
   const dateFormatter = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
@@ -55,6 +58,40 @@ export function FileList({
     return dateFormatter.format(parsed);
   }
 
+  function toggleSort(nextKey: 'size' | 'mod_time') {
+    if (sortKey !== nextKey) {
+      setSortKey(nextKey);
+      setSortDir('asc');
+      return;
+    }
+    setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  }
+
+  const sortedEntries = useMemo(() => {
+    if (!sortKey) return entries;
+    const direction = sortDir === 'asc' ? 1 : -1;
+    return [...entries].sort((a, b) => {
+      if (sortKey === 'size') {
+        const av = a.is_dir ? null : a.size;
+        const bv = b.is_dir ? null : b.size;
+        if (av === null && bv === null) return a.name.localeCompare(b.name);
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        if (av !== bv) return (av - bv) * direction;
+        return a.name.localeCompare(b.name);
+      }
+      const at = a.mod_time ? Date.parse(a.mod_time) : Number.NaN;
+      const bt = b.mod_time ? Date.parse(b.mod_time) : Number.NaN;
+      const aMissing = Number.isNaN(at);
+      const bMissing = Number.isNaN(bt);
+      if (aMissing && bMissing) return a.name.localeCompare(b.name);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (at !== bt) return (at - bt) * direction;
+      return a.name.localeCompare(b.name);
+    });
+  }, [entries, sortDir, sortKey]);
+
   function readDropPayload(event: React.DragEvent): { sources: string[]; sourcePaneId?: string } | null {
     const custom = event.dataTransfer.getData('application/x-rclone-paths');
     const fallback = event.dataTransfer.getData('text/plain');
@@ -76,7 +113,21 @@ export function FileList({
       if (!payload) return;
       onDropTarget(null, payload.sources, e.altKey, payload.sourcePaneId);
     }}>
-      {entries.map((entry) => (
+      <div className="file-header">
+        {selectionMode && <span className="file-header-check" />}
+        <div className="file-header-main">
+          <span className="file-header-icon" />
+          <span className="file-header-name">Name</span>
+          <span className="file-header-kind">Type</span>
+          <button className="file-header-btn" onClick={() => toggleSort('size')}>
+            Size{sortKey === 'size' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+          </button>
+          <button className="file-header-btn" onClick={() => toggleSort('mod_time')}>
+            Modified{sortKey === 'mod_time' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+          </button>
+        </div>
+      </div>
+      {sortedEntries.map((entry) => (
         <div
           key={entry.path}
           className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''} ${highlighted.has(entry.path) ? 'is-arrival' : ''}`}
