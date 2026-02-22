@@ -57,7 +57,7 @@ async def collect_events(manager: SearchManager, search_id: str):
 @pytest.mark.asyncio
 async def test_search_streams_progress_and_results():
     manager = SearchManager(client=FakeRclone())
-    search_id = await manager.create("r:root", "*.txt", False, None)
+    search_id = await manager.create("r:root", "*.txt", None)
 
     events = await collect_events(manager, search_id)
     result_paths = [event.entry.path for event in events if event.type == "result"]
@@ -74,12 +74,12 @@ async def test_search_streams_progress_and_results():
 @pytest.mark.asyncio
 async def test_search_min_size_filters_files_only():
     manager = SearchManager(client=FakeRclone())
-    search_id = await manager.create("r:root", "*sub*", False, 1.0)
+    search_id = await manager.create("r:root", "*sub*", 1.0)
     events = await collect_events(manager, search_id)
     result_names = [event.entry.name for event in events if event.type == "result"]
     assert "sub" in result_names
 
-    search_id_files = await manager.create("r:root", "*.txt", False, 1.0)
+    search_id_files = await manager.create("r:root", "*.txt", 1.0)
     file_events = await collect_events(manager, search_id_files)
     file_result_names = [event.entry.name for event in file_events if event.type == "result"]
     assert "small.txt" not in file_result_names
@@ -87,9 +87,24 @@ async def test_search_min_size_filters_files_only():
 
 
 @pytest.mark.asyncio
+async def test_search_is_case_insensitive_and_plain_query_is_literal():
+    manager = SearchManager(client=FakeRclone())
+    literal_like = await manager.create("r:root", "SMALL.TXT", None)
+    literal_events = await collect_events(manager, literal_like)
+    literal_paths = [event.entry.path for event in literal_events if event.type == "result"]
+    assert literal_paths == ["r:root/small.txt"]
+
+    wildcard = await manager.create("r:root", "*.TXT", None)
+    wildcard_events = await collect_events(manager, wildcard)
+    wildcard_paths = [event.entry.path for event in wildcard_events if event.type == "result"]
+    assert "r:root/small.txt" in wildcard_paths
+    assert "r:root/sub/nested.txt" in wildcard_paths
+
+
+@pytest.mark.asyncio
 async def test_search_can_be_cancelled():
     manager = SearchManager(client=SlowRclone())
-    search_id = await manager.create("r:root", "*", False, None)
+    search_id = await manager.create("r:root", "*", None)
     await asyncio.sleep(0.05)
     await manager.cancel(search_id)
     events = await collect_events(manager, search_id)
@@ -104,7 +119,7 @@ async def test_search_manager_cleanup_purges_terminal_sessions():
     manager.unpolled_timeout_seconds = 5.0
     manager.start()
     try:
-        search_id = await manager.create("r:root", "*", False, None)
+        search_id = await manager.create("r:root", "*", None)
         await collect_events(manager, search_id)
         await asyncio.sleep(2.3)
         with pytest.raises(KeyError):

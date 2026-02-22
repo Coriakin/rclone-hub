@@ -20,7 +20,6 @@ function newPane(path = ''): PaneState {
     mode: 'browse',
     search: {
       filenameQuery: '*',
-      literal: false,
       minSizeMb: '',
       running: false,
       scannedDirs: 0,
@@ -366,13 +365,12 @@ export function App() {
       const created = await api.startSearch({
         root_path: pane.currentPath,
         filename_query: pane.search.filenameQuery || '*',
-        literal: pane.search.literal,
         min_size_mb: minSizeMb,
       });
       pushDiagnostics(
         'info',
         `SEARCH/${created.search_id.slice(0, 8)}`,
-        `pane=${paneId} search started root=${pane.currentPath} query=${pane.search.filenameQuery || '*'} literal=${String(pane.search.literal)} min_size_mb=${minSizeMb ?? 'none'}`
+        `pane=${paneId} search started root=${pane.currentPath} query=${pane.search.filenameQuery || '*'} min_size_mb=${minSizeMb ?? 'none'}`
       );
       setPanes((prev) => prev.map((p) => p.id === paneId ? {
         ...p,
