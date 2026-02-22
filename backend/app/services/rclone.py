@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import threading
 import time
 from typing import BinaryIO, Callable, Iterator
 
@@ -136,10 +137,35 @@ class RcloneClient:
             bufsize=1,
         )
 
+        stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
         timed_out = False
         cancelled = False
         deadline = time.monotonic() + timeout
+
+        def drain_stdout() -> None:
+            if proc.stdout is None:
+                return
+            while True:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                stdout_chunks.append(chunk)
+
+        def drain_stderr() -> None:
+            if proc.stderr is None:
+                return
+            while True:
+                line = proc.stderr.readline()
+                if not line:
+                    break
+                stderr_chunks.append(line)
+                on_progress(line.rstrip())
+
+        stdout_thread = threading.Thread(target=drain_stdout, name="rclone-stdout-drain", daemon=True)
+        stderr_thread = threading.Thread(target=drain_stderr, name="rclone-stderr-drain", daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
 
         try:
             while True:
@@ -153,29 +179,18 @@ class RcloneClient:
                     proc.kill()
                     break
 
-                line = proc.stderr.readline() if proc.stderr is not None else ""
-                if line:
-                    stderr_chunks.append(line)
-                    on_progress(line.rstrip())
-                    continue
-
                 if proc.poll() is not None:
                     break
 
                 time.sleep(0.05)
-
-            remaining_err = proc.stderr.read() if proc.stderr is not None else ""
-            if remaining_err:
-                stderr_chunks.append(remaining_err)
-                for line in remaining_err.splitlines():
-                    on_progress(line.rstrip())
-
-            stdout = proc.stdout.read() if proc.stdout is not None else ""
         finally:
             if proc.poll() is None:
                 proc.kill()
             proc.wait()
+            stdout_thread.join(timeout=1.0)
+            stderr_thread.join(timeout=1.0)
 
+        stdout = "".join(stdout_chunks)
         stderr = "".join(stderr_chunks)
         if timed_out:
             stderr = (stderr + f"\nTimed out after {timeout}s").strip()
@@ -311,6 +326,27 @@ class RcloneClient:
     def path_basename(self, remote_path: str) -> str:
         _, path = self.split_remote(remote_path)
         return Path(path).name
+
+    def path_dirname(self, remote_path: str) -> str:
+        remote, path = self.split_remote(remote_path)
+        normalized = path.strip("/")
+        if not normalized:
+            return f"{remote}:"
+        parts = normalized.split("/")
+        if len(parts) == 1:
+            return f"{remote}:"
+        return f"{remote}:{'/'.join(parts[:-1])}"
+
+    def rename_within_parent(self, source_path: str, new_name: str) -> str:
+        current_name = self.path_basename(source_path)
+        if not current_name:
+            raise RcloneError("cannot rename remote root")
+        if current_name == new_name:
+            return source_path
+        parent_path = self.path_dirname(source_path)
+        destination = self.join_remote(parent_path, new_name)
+        self.run_checked(["moveto", source_path, destination])
+        return destination
 
     def copy(
         self,

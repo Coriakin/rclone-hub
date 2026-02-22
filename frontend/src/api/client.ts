@@ -53,6 +53,27 @@ export type SearchDoneEvent = {
 
 export type SearchEvent = SearchProgressEvent | SearchResultEvent | SearchDoneEvent;
 
+export type SizeProgressEvent = {
+  seq: number;
+  type: 'progress';
+  current_dir: string;
+  scanned_dirs: number;
+  files_count: number;
+  bytes_total: number;
+};
+
+export type SizeDoneEvent = {
+  seq: number;
+  type: 'done';
+  status: 'success' | 'cancelled' | 'failed';
+  scanned_dirs: number;
+  files_count: number;
+  bytes_total: number;
+  error?: string;
+};
+
+export type SizeEvent = SizeProgressEvent | SizeDoneEvent;
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000/api';
 const DEFAULT_TIMEOUT_MS = 45000;
 
@@ -89,6 +110,26 @@ export const api = {
   cancelSearch: (searchId: string) =>
     json<{ ok: boolean }>(`${API_BASE}/searches/${encodeURIComponent(searchId)}/cancel`, {
       method: 'POST',
+    }),
+  startSize: (payload: { root_path: string }) =>
+    json<{ size_id: string }>(`${API_BASE}/sizes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  sizeEvents: (sizeId: string, afterSeq: number) =>
+    json<{ events: SizeEvent[]; done: boolean; next_seq: number }>(
+      `${API_BASE}/sizes/${encodeURIComponent(sizeId)}/events?after_seq=${afterSeq}`
+    ),
+  cancelSize: (sizeId: string) =>
+    json<{ ok: boolean }>(`${API_BASE}/sizes/${encodeURIComponent(sizeId)}/cancel`, {
+      method: 'POST',
+    }),
+  rename: (sourcePath: string, newName: string) =>
+    json<{ ok: boolean; updated_path: string }>(`${API_BASE}/paths/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_path: sourcePath, new_name: newName }),
     }),
   jobs: () => json<{ jobs: Job[] }>(`${API_BASE}/jobs`),
   job: (jobId: string) => json<Job>(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`),

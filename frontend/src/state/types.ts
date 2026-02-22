@@ -14,6 +14,19 @@ export type PaneSearchState = {
   error?: string;
 };
 
+export type PaneSizeCalcState = {
+  running: boolean;
+  sizeId?: string;
+  targetPath?: string;
+  currentDir?: string;
+  scannedDirs: number;
+  filesCount: number;
+  bytesTotal: number;
+  eventCursor: number;
+  error?: string;
+  doneStatus?: 'success' | 'cancelled' | 'failed';
+};
+
 export type PaneState = {
   id: string;
   currentPath: string;
@@ -22,6 +35,9 @@ export type PaneState = {
   items: Entry[];
   mode: PaneMode;
   search: PaneSearchState;
+  sizeCalc: PaneSizeCalcState;
+  directorySizes: Record<string, number>;
+  lockedOperation: null | 'size_calc';
   selected: Set<string>;
   loading: boolean;
   error?: string;

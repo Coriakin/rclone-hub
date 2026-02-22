@@ -55,6 +55,16 @@ class CancelRequest(BaseModel):
     job_id: str
 
 
+class RenamePathRequest(BaseModel):
+    source_path: str
+    new_name: str
+
+
+class RenamePathResponse(BaseModel):
+    ok: bool
+    updated_path: str
+
+
 class JobLog(BaseModel):
     ts: datetime
     level: str
@@ -138,5 +148,41 @@ SearchEvent = Annotated[Union[SearchProgressEvent, SearchResultEvent, SearchDone
 
 class SearchEventsResponse(BaseModel):
     events: list[SearchEvent]
+    done: bool
+    next_seq: int
+
+
+class SizeCreateRequest(BaseModel):
+    root_path: str
+
+
+class SizeCreateResponse(BaseModel):
+    size_id: str
+
+
+class SizeProgressEvent(BaseModel):
+    seq: int
+    type: Literal["progress"]
+    current_dir: str
+    scanned_dirs: int
+    files_count: int
+    bytes_total: int
+
+
+class SizeDoneEvent(BaseModel):
+    seq: int
+    type: Literal["done"]
+    status: Literal["success", "cancelled", "failed"]
+    scanned_dirs: int
+    files_count: int
+    bytes_total: int
+    error: str | None = None
+
+
+SizeEvent = Annotated[Union[SizeProgressEvent, SizeDoneEvent], Field(discriminator="type")]
+
+
+class SizeEventsResponse(BaseModel):
+    events: list[SizeEvent]
     done: bool
     next_seq: int

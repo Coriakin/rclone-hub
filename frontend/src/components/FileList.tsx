@@ -4,6 +4,8 @@ import type { Entry } from '../api/client';
 type Props = {
   paneId: string;
   entries: Entry[];
+  directorySizes?: Record<string, number>;
+  interactionsDisabled?: boolean;
   selectionMode: boolean;
   showPathColumn?: boolean;
   selected: Set<string>;
@@ -11,13 +13,15 @@ type Props = {
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
   onNavigate: (path: string) => void;
-  onOpenInNewPane: (path: string) => void;
+  onContextAction: (entry: Entry, x: number, y: number) => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
 };
 
 export function FileList({
   paneId,
   entries,
+  directorySizes = {},
+  interactionsDisabled = false,
   selectionMode,
   showPathColumn = false,
   selected,
@@ -25,7 +29,7 @@ export function FileList({
   onToggleSelect,
   onFileClick,
   onNavigate,
-  onOpenInNewPane,
+  onContextAction,
   onDropTarget,
 }: Props) {
   const [sortKey, setSortKey] = useState<'size' | 'mod_time' | 'path' | null>(null);
@@ -74,8 +78,12 @@ export function FileList({
     const direction = sortDir === 'asc' ? 1 : -1;
     return [...entries].sort((a, b) => {
       if (sortKey === 'size') {
-        const av = a.is_dir ? null : a.size;
-        const bv = b.is_dir ? null : b.size;
+        const av = a.is_dir
+          ? (Object.prototype.hasOwnProperty.call(directorySizes, a.path) ? directorySizes[a.path] : null)
+          : a.size;
+        const bv = b.is_dir
+          ? (Object.prototype.hasOwnProperty.call(directorySizes, b.path) ? directorySizes[b.path] : null)
+          : b.size;
         if (av === null && bv === null) return a.name.localeCompare(b.name);
         if (av === null) return 1;
         if (bv === null) return -1;
@@ -98,7 +106,7 @@ export function FileList({
       if (at !== bt) return (at - bt) * direction;
       return a.name.localeCompare(b.name);
     });
-  }, [entries, sortDir, sortKey]);
+  }, [directorySizes, entries, sortDir, sortKey]);
 
   function parentPath(entry: Entry): string {
     if (entry.parent_path) return entry.parent_path;
@@ -125,8 +133,18 @@ export function FileList({
     }
   }
 
+  function displaySize(entry: Entry): string {
+    if (!entry.is_dir) return formatSize(entry.size);
+    if (!Object.prototype.hasOwnProperty.call(directorySizes, entry.path)) return '-';
+    return formatSize(directorySizes[entry.path]);
+  }
+
   return (
-    <div className="file-list" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
+    <div className="file-list" onDragOver={(e) => {
+      if (interactionsDisabled) return;
+      e.preventDefault();
+    }} onDrop={(e) => {
+      if (interactionsDisabled) return;
       e.preventDefault();
       const payload = readDropPayload(e);
       if (!payload) return;
@@ -156,13 +174,19 @@ export function FileList({
           key={entry.path}
           className={`file-row ${entry.is_dir ? 'is-dir' : 'is-file'} ${selected.has(entry.path) ? 'is-selected' : ''} ${highlighted.has(entry.path) ? 'is-arrival' : ''}`}
           draggable
+          aria-disabled={interactionsDisabled}
           onDragStart={(e) => {
+            if (interactionsDisabled) {
+              e.preventDefault();
+              return;
+            }
             const payload = JSON.stringify({ sources: [entry.path], sourcePaneId: paneId });
             e.dataTransfer.setData('application/x-rclone-paths', payload);
             e.dataTransfer.setData('text/plain', payload);
             e.dataTransfer.effectAllowed = 'copyMove';
           }}
           onDrop={(e) => {
+            if (interactionsDisabled) return;
             e.preventDefault();
             e.stopPropagation();
             const payload = readDropPayload(e);
@@ -170,14 +194,15 @@ export function FileList({
             onDropTarget(entry.is_dir ? entry.path : null, payload.sources, e.altKey, payload.sourcePaneId);
           }}
           onDragOver={(e) => {
+            if (interactionsDisabled) return;
             if (entry.is_dir) {
               e.preventDefault();
             }
           }}
           onContextMenu={(e) => {
-            if (!entry.is_dir) return;
+            if (interactionsDisabled) return;
             e.preventDefault();
-            onOpenInNewPane(entry.path);
+            onContextAction(entry, e.clientX, e.clientY);
           }}
         >
           {selectionMode && (
@@ -188,13 +213,17 @@ export function FileList({
               onChange={() => onToggleSelect(entry.path)}
             />
           )}
-          <button className={`entry-btn ${showPathColumn ? 'with-path' : ''}`} onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}>
+          <button
+            className={`entry-btn ${showPathColumn ? 'with-path' : ''}`}
+            disabled={interactionsDisabled}
+            onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}
+          >
             <span className={`entry-icon ${entry.is_dir ? 'dir' : 'file'}`} aria-hidden="true" />
             <span className="entry-name">{entry.name || entry.path}</span>
             {showPathColumn && <span className="entry-path" title={parentPath(entry)}>{parentPath(entry)}</span>}
             <span className="entry-kind">{entry.is_dir ? 'Folder' : 'File'}</span>
-            <span className="entry-size" title={entry.is_dir ? '' : `${entry.size} bytes`}>
-              {entry.is_dir ? '-' : formatSize(entry.size)}
+            <span className="entry-size" title={entry.is_dir ? displaySize(entry) : `${entry.size} bytes`}>
+              {displaySize(entry)}
             </span>
             <span className="entry-modified" title={entry.mod_time ?? ''}>
               {formatModTime(entry.mod_time)}

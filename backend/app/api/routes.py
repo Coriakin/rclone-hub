@@ -10,18 +10,24 @@ from app.models.schemas import (
     CancelRequest,
     DeleteRequest,
     HealthResponse,
+    RenamePathRequest,
+    RenamePathResponse,
     SearchCreateRequest,
     SearchCreateResponse,
     SearchEventsResponse,
     Settings,
+    SizeCreateRequest,
+    SizeCreateResponse,
+    SizeEventsResponse,
     TransferRequest,
 )
 from app.services.rclone import RcloneClient, RcloneError
 from app.services.searches import SearchManager
+from app.services.sizes import SizeManager
 from app.services.transfers import TransferManager
 
 
-def build_router(rclone: RcloneClient, transfers: TransferManager, searches: SearchManager, settings_store) -> APIRouter:
+def build_router(rclone: RcloneClient, transfers: TransferManager, searches: SearchManager, sizes: SizeManager, settings_store) -> APIRouter:
     router = APIRouter(prefix="/api")
     image_content_types = {
         ".jpg": "image/jpeg",
@@ -109,6 +115,47 @@ def build_router(rclone: RcloneClient, transfers: TransferManager, searches: Sea
         if not found:
             raise HTTPException(status_code=404, detail="search not found")
         return {"ok": True}
+
+    @router.post("/sizes", response_model=SizeCreateResponse)
+    async def create_size(req: SizeCreateRequest) -> SizeCreateResponse:
+        try:
+            size_id = await sizes.create(root_path=req.root_path)
+            return SizeCreateResponse(size_id=size_id)
+        except RcloneError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/sizes/{size_id}/events", response_model=SizeEventsResponse)
+    async def poll_size(size_id: str, after_seq: int = Query(0, ge=0)) -> SizeEventsResponse:
+        try:
+            return await sizes.poll(size_id, after_seq)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="size session not found") from None
+
+    @router.post("/sizes/{size_id}/cancel")
+    async def cancel_size(size_id: str) -> dict[str, bool]:
+        found = await sizes.cancel(size_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="size session not found")
+        return {"ok": True}
+
+    @router.post("/paths/rename", response_model=RenamePathResponse)
+    def rename_path(req: RenamePathRequest) -> RenamePathResponse:
+        source_path = req.source_path.strip()
+        new_name = req.new_name.strip()
+        if not source_path:
+            raise HTTPException(status_code=400, detail="source_path is required")
+        if not new_name:
+            raise HTTPException(status_code=400, detail="new_name is required")
+        if "/" in new_name or ":" in new_name:
+            raise HTTPException(status_code=400, detail="new_name cannot contain '/' or ':'")
+        if new_name in {".", ".."}:
+            raise HTTPException(status_code=400, detail="new_name is invalid")
+
+        try:
+            updated_path = rclone.rename_within_parent(source_path, new_name)
+            return RenamePathResponse(ok=True, updated_path=updated_path)
+        except RcloneError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/jobs/copy")
     def create_copy(req: TransferRequest):
