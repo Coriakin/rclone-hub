@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Job, type SearchEvent } from '../api/client';
+import { api, type Entry, type Job, type SearchEvent, type SizeEvent } from '../api/client';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DiagnosticsPanel, type DiagnosticsLog } from '../components/DiagnosticsPanel';
 import { Pane } from '../components/Pane';
@@ -29,6 +29,16 @@ function newPane(path = ''): PaneState {
       matchedCount: 0,
       eventCursor: 0,
     },
+    sizeCalc: {
+      running: false,
+      targetPath: undefined,
+      scannedDirs: 0,
+      filesCount: 0,
+      bytesTotal: 0,
+      eventCursor: 0,
+    },
+    directorySizes: {},
+    lockedOperation: null,
     selected: new Set<string>(),
     loading: false,
   };
@@ -54,7 +64,7 @@ export function App() {
   const [activePaneId, setActivePaneId] = useState<string>(initialPane.id);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [diagnosticsLogs, setDiagnosticsLogs] = useState<DiagnosticsLog[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null }>({ open: false, paneId: null });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; paneId: string | null; sources?: string[] }>({ open: false, paneId: null });
   const [confirmDrop, setConfirmDrop] = useState<{
     open: boolean;
     targetPaneId: string | null;
@@ -77,6 +87,29 @@ export function App() {
   const [imagePreviewError, setImagePreviewError] = useState<string | null>(null);
   const [targetPaneBySourcePane, setTargetPaneBySourcePane] = useState<Record<string, string>>({});
   const [highlightedByPane, setHighlightedByPane] = useState<Record<string, string[]>>({});
+  const [contextMenu, setContextMenu] = useState<{ open: boolean; paneId: string | null; entry: Entry | null; x: number; y: number }>({
+    open: false,
+    paneId: null,
+    entry: null,
+    x: 0,
+    y: 0,
+  });
+  const [renameDialog, setRenameDialog] = useState<{
+    open: boolean;
+    paneId: string | null;
+    sourcePath: string;
+    currentName: string;
+    nextName: string;
+    error?: string;
+    saving: boolean;
+  }>({
+    open: false,
+    paneId: null,
+    sourcePath: '',
+    currentName: '',
+    nextName: '',
+    saving: false,
+  });
   const pendingTransferTargetsRef = useRef<Record<string, { targetPaneId: string }>>({});
   const processedTransferJobsRef = useRef<Set<string>>(new Set());
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -149,23 +182,41 @@ export function App() {
         if (pane.search.searchId) {
           api.cancelSearch(pane.search.searchId).catch(() => undefined);
         }
+        if (pane.sizeCalc.sizeId) {
+          api.cancelSize(pane.sizeCalc.sizeId).catch(() => undefined);
+        }
       }
       Object.values(highlightTimersRef.current).forEach((timer) => clearTimeout(timer));
     };
   }, []);
 
   useEffect(() => {
-    if (!imagePreview.open) return;
+    if (!imagePreview.open && !contextMenu.open) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setImagePreview({ open: false, remotePath: '', fileName: '', paneId: null });
-        setImagePreviewLoading(false);
-        setImagePreviewError(null);
+        if (contextMenu.open) {
+          setContextMenu({ open: false, paneId: null, entry: null, x: 0, y: 0 });
+          return;
+        }
+        if (imagePreview.open) {
+          setImagePreview({ open: false, remotePath: '', fileName: '', paneId: null });
+          setImagePreviewLoading(false);
+          setImagePreviewError(null);
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [imagePreview.open]);
+  }, [contextMenu.open, imagePreview.open]);
+
+  useEffect(() => {
+    if (!contextMenu.open) return;
+    function onPointerDown() {
+      setContextMenu({ open: false, paneId: null, entry: null, x: 0, y: 0 });
+    }
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [contextMenu.open]);
 
   useEffect(() => {
     for (const job of jobs) {
@@ -254,6 +305,192 @@ export function App() {
         error,
       },
     } : p));
+  }
+
+  function clearPaneSizeRuntime(
+    paneId: string,
+    patch?: Partial<{
+      error: string | undefined;
+      doneStatus: 'success' | 'cancelled' | 'failed' | undefined;
+      keepResult: boolean;
+    }>
+  ) {
+    const keepResult = patch?.keepResult ?? false;
+    setPanes((prev) => prev.map((p) => p.id === paneId ? {
+      ...p,
+      lockedOperation: null,
+      sizeCalc: {
+        running: false,
+        sizeId: undefined,
+        targetPath: keepResult ? p.sizeCalc.targetPath : undefined,
+        currentDir: keepResult ? p.sizeCalc.currentDir : undefined,
+        scannedDirs: keepResult ? p.sizeCalc.scannedDirs : 0,
+        filesCount: keepResult ? p.sizeCalc.filesCount : 0,
+        bytesTotal: keepResult ? p.sizeCalc.bytesTotal : 0,
+        eventCursor: keepResult ? p.sizeCalc.eventCursor : 0,
+        error: patch?.error,
+        doneStatus: patch?.doneStatus,
+      },
+    } : p));
+  }
+
+  async function cancelPaneSize(paneId: string) {
+    const pane = getPane(paneId);
+    if (!pane?.sizeCalc.sizeId) {
+      clearPaneSizeRuntime(paneId);
+      return;
+    }
+    const sizeId = pane.sizeCalc.sizeId;
+    clearPaneSizeRuntime(paneId, { doneStatus: 'cancelled' });
+    try {
+      await api.cancelSize(sizeId);
+      pushDiagnostics('warning', `SIZE/${sizeId.slice(0, 8)}`, `pane=${paneId} cancel requested`);
+    } catch {
+      // Ignore cancel races when session was already completed/removed.
+    }
+  }
+
+  function applySizeEvents(paneId: string, events: SizeEvent[], nextSeq: number) {
+    setPanes((prev) => prev.map((p) => {
+      if (p.id !== paneId) return p;
+      let currentDir = p.sizeCalc.currentDir;
+      let scannedDirs = p.sizeCalc.scannedDirs;
+      let filesCount = p.sizeCalc.filesCount;
+      let bytesTotal = p.sizeCalc.bytesTotal;
+      let running = p.sizeCalc.running;
+      let error = p.sizeCalc.error;
+      let doneStatus = p.sizeCalc.doneStatus;
+      let directorySizes = p.directorySizes;
+      let items = p.items;
+      for (const event of events) {
+        if (event.type === 'progress') {
+          currentDir = event.current_dir;
+          scannedDirs = event.scanned_dirs;
+          filesCount = event.files_count;
+          bytesTotal = event.bytes_total;
+          continue;
+        }
+        scannedDirs = event.scanned_dirs;
+        filesCount = event.files_count;
+        bytesTotal = event.bytes_total;
+        running = false;
+        doneStatus = event.status;
+        error = event.status === 'failed' ? (event.error ?? 'Size calculation failed') : undefined;
+        if (event.status === 'success' && p.sizeCalc.targetPath) {
+          directorySizes = { ...directorySizes, [p.sizeCalc.targetPath]: event.bytes_total };
+          items = items.map((item) => item.path === p.sizeCalc.targetPath
+            ? { ...item, size: event.bytes_total }
+            : item);
+        }
+      }
+      return {
+        ...p,
+        directorySizes,
+        items,
+        lockedOperation: running ? 'size_calc' : null,
+        sizeCalc: {
+          ...p.sizeCalc,
+          currentDir,
+          scannedDirs,
+          filesCount,
+          bytesTotal,
+          running,
+          error,
+          doneStatus,
+          eventCursor: nextSeq,
+        },
+      };
+    }));
+  }
+
+  async function pollSize(paneId: string, sizeId: string) {
+    let cursor = 0;
+    const source = `SIZE/${sizeId.slice(0, 8)}`;
+    while (true) {
+      const pane = getPane(paneId);
+      if (!pane) {
+        try {
+          await api.cancelSize(sizeId);
+        } catch {
+          // Ignore cancellation races.
+        }
+        return;
+      }
+      const hasDifferentSizeId = !!pane.sizeCalc.sizeId && pane.sizeCalc.sizeId !== sizeId;
+      if (pane.lockedOperation !== 'size_calc' || hasDifferentSizeId) {
+        try {
+          await api.cancelSize(sizeId);
+        } catch {
+          // Ignore cancellation races.
+        }
+        return;
+      }
+
+      try {
+        const payload = await api.sizeEvents(sizeId, cursor);
+        const latest = getPane(paneId);
+        if (!latest || latest.sizeCalc.sizeId !== sizeId) {
+          return;
+        }
+        for (const event of payload.events) {
+          if (event.type === 'progress') {
+            pushDiagnostics('info', source, `pane=${paneId} scanning=${event.current_dir} scanned_dirs=${event.scanned_dirs} files=${event.files_count} bytes=${event.bytes_total}`);
+          } else if (event.status === 'failed') {
+            pushDiagnostics('error', source, `pane=${paneId} size failed scanned_dirs=${event.scanned_dirs} files=${event.files_count} bytes=${event.bytes_total} error=${event.error ?? 'unknown'}`);
+          } else if (event.status === 'cancelled') {
+            pushDiagnostics('warning', source, `pane=${paneId} size cancelled scanned_dirs=${event.scanned_dirs} files=${event.files_count} bytes=${event.bytes_total}`);
+          } else {
+            pushDiagnostics('info', source, `pane=${paneId} size complete scanned_dirs=${event.scanned_dirs} files=${event.files_count} bytes=${event.bytes_total}`);
+          }
+        }
+        applySizeEvents(paneId, payload.events, payload.next_seq);
+        cursor = payload.next_seq;
+        if (payload.done) {
+          return;
+        }
+      } catch (error) {
+        pushDiagnostics('error', source, `pane=${paneId} size poll error: ${String(error)}`);
+        clearPaneSizeRuntime(paneId, { error: String(error), doneStatus: 'failed', keepResult: true });
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    }
+  }
+
+  async function startPaneSizeCalculation(paneId: string, rootPath: string) {
+    const pane = getPane(paneId);
+    if (!pane || pane.lockedOperation) return;
+    setPanes((prev) => prev.map((p) => p.id === paneId ? {
+      ...p,
+      lockedOperation: 'size_calc',
+      sizeCalc: {
+        running: true,
+        sizeId: undefined,
+        targetPath: rootPath,
+        currentDir: rootPath,
+        scannedDirs: 0,
+        filesCount: 0,
+        bytesTotal: 0,
+        eventCursor: 0,
+        error: undefined,
+        doneStatus: undefined,
+      },
+    } : p));
+
+    try {
+      const created = await api.startSize({ root_path: rootPath });
+      pushDiagnostics('info', `SIZE/${created.size_id.slice(0, 8)}`, `pane=${paneId} size started root=${rootPath}`);
+      setPanes((prev) => prev.map((p) => p.id === paneId ? {
+        ...p,
+        lockedOperation: 'size_calc',
+        sizeCalc: { ...p.sizeCalc, running: true, sizeId: created.size_id, targetPath: rootPath, currentDir: rootPath },
+      } : p));
+      pollSize(paneId, created.size_id).catch(console.error);
+    } catch (error) {
+      pushDiagnostics('error', `SIZE/${paneId}`, `pane=${paneId} failed to start size calculation: ${String(error)}`);
+      clearPaneSizeRuntime(paneId, { error: String(error), doneStatus: 'failed', keepResult: true });
+    }
   }
 
   async function cancelPaneSearch(paneId: string) {
@@ -379,7 +616,7 @@ export function App() {
 
   async function startPaneSearch(paneId: string) {
     const pane = getPane(paneId);
-    if (!pane?.currentPath) return;
+    if (!pane?.currentPath || pane.lockedOperation) return;
     await cancelPaneSearch(paneId);
 
     const minSizeRaw = pane.search.minSizeMb.trim();
@@ -431,13 +668,23 @@ export function App() {
     setPanes((prev) => prev.map((p) => p.id === paneId ? { ...p, loading: true, error: undefined } : p));
     try {
       const data = await api.list(path);
-      setPanes((prev) => prev.map((p) => p.id === paneId ? { ...p, loading: false, items: data.items, currentPath: path } : p));
+      setPanes((prev) => prev.map((p) => {
+        if (p.id !== paneId) return p;
+        const items = data.items.map((item) => {
+          if (!item.is_dir) return item;
+          if (!Object.prototype.hasOwnProperty.call(p.directorySizes, item.path)) return item;
+          return { ...item, size: p.directorySizes[item.path] };
+        });
+        return { ...p, loading: false, items, currentPath: path };
+      }));
     } catch (error) {
       setPanes((prev) => prev.map((p) => p.id === paneId ? { ...p, loading: false, error: String(error) } : p));
     }
   }
 
   async function navigatePane(paneId: string, path: string, pushHistory = true) {
+    const pane = getPane(paneId);
+    if (pane?.lockedOperation) return;
     await cancelPaneSearch(paneId);
     setPanes((prev) => prev.map((p) => {
       if (p.id !== paneId) return p;
@@ -450,7 +697,7 @@ export function App() {
 
   async function transferSelected(sourcePaneId: string, targetPaneId: string, move: boolean) {
     const sourcePane = panes.find((p) => p.id === sourcePaneId);
-    if (!sourcePane) return;
+    if (!sourcePane || sourcePane.lockedOperation) return;
     const targetPane = panes.find((p) => p.id === targetPaneId);
     if (!targetPane?.currentPath) return;
 
@@ -466,7 +713,7 @@ export function App() {
 
   function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], _move: boolean, dragSourcePaneId?: string) {
     const pane = panes.find((p) => p.id === targetPaneId);
-    if (!pane) return;
+    if (!pane || pane.lockedOperation) return;
 
     const samePaneDrop = dragSourcePaneId === targetPaneId;
     if (samePaneDrop && !targetPath) {
@@ -511,6 +758,7 @@ export function App() {
       ?? panes.find((pane) => !pane.currentPath)
       ?? panes[0];
     if (targetPane) {
+      if (targetPane.lockedOperation) return;
       if (activePaneId !== targetPane.id) {
         setActivePaneId(targetPane.id);
       }
@@ -532,6 +780,7 @@ export function App() {
 
   function closePane(paneId: string) {
     cancelPaneSearch(paneId).catch(console.error);
+    cancelPaneSize(paneId).catch(console.error);
     setPanes((prev) => prev.filter((p) => p.id !== paneId));
     if (activePaneId === paneId) {
       const next = panes.find((p) => p.id !== paneId);
@@ -594,6 +843,165 @@ export function App() {
       if (next.has(path)) next.delete(path); else next.add(path);
       return { ...p, selected: next };
     }));
+  }
+
+  function formatSize(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = bytes / 1024;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const precision = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+    return `${size.toFixed(precision)} ${units[unitIndex]}`;
+  }
+
+  function closeContextMenu() {
+    setContextMenu({ open: false, paneId: null, entry: null, x: 0, y: 0 });
+  }
+
+  function openContextMenu(paneId: string, entry: Entry, x: number, y: number) {
+    const pane = getPane(paneId);
+    if (!pane || pane.lockedOperation) return;
+    setContextMenu({ open: true, paneId, entry, x, y });
+  }
+
+  async function copyPathToClipboard(path: string) {
+    if (!navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(path);
+  }
+
+  function triggerFileDownload(path: string) {
+    const link = document.createElement('a');
+    link.href = api.fileContentUrl(path, 'attachment');
+    link.download = basename(path);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function openRenameDialog(paneId: string, entry: Entry) {
+    setRenameDialog({
+      open: true,
+      paneId,
+      sourcePath: entry.path,
+      currentName: entry.name || basename(entry.path),
+      nextName: entry.name || basename(entry.path),
+      saving: false,
+    });
+  }
+
+  async function runContextAction(action: 'open' | 'open_new_pane' | 'copy_path' | 'download' | 'preview' | 'rename' | 'delete' | 'calculate_size') {
+    const paneId = contextMenu.paneId;
+    const entry = contextMenu.entry;
+    closeContextMenu();
+    if (!paneId || !entry) return;
+
+    if (action === 'open') {
+      if (entry.is_dir) {
+        navigatePane(paneId, entry.path).catch(console.error);
+      } else {
+        handleFileClick(paneId, entry.path);
+      }
+      return;
+    }
+    if (action === 'open_new_pane') {
+      openPathInNewPane(entry.path);
+      return;
+    }
+    if (action === 'copy_path') {
+      copyPathToClipboard(entry.path).catch(console.error);
+      return;
+    }
+    if (action === 'download') {
+      if (!entry.is_dir) {
+        triggerFileDownload(entry.path);
+      }
+      return;
+    }
+    if (action === 'preview') {
+      if (!entry.is_dir && isPreviewableImage(entry.path)) {
+        openImagePreview(entry.path, paneId);
+      }
+      return;
+    }
+    if (action === 'rename') {
+      openRenameDialog(paneId, entry);
+      return;
+    }
+    if (action === 'calculate_size') {
+      if (entry.is_dir) {
+        startPaneSizeCalculation(paneId, entry.path).catch(console.error);
+      }
+      return;
+    }
+    if (action === 'delete') {
+      const pane = getPane(paneId);
+      const useSelection = !!pane && pane.mode === 'select' && pane.selected.size > 0;
+      const sources = useSelection ? Array.from(pane!.selected) : [entry.path];
+      setConfirmDelete({ open: true, paneId, sources });
+    }
+  }
+
+  async function confirmRename() {
+    if (!renameDialog.paneId) return;
+    const nextName = renameDialog.nextName.trim();
+    if (!nextName) {
+      setRenameDialog((prev) => ({ ...prev, error: 'Name is required.' }));
+      return;
+    }
+    if (nextName.includes('/') || nextName.includes(':')) {
+      setRenameDialog((prev) => ({ ...prev, error: "Name cannot contain '/' or ':'." }));
+      return;
+    }
+    if (nextName === renameDialog.currentName) {
+      setRenameDialog((prev) => ({ ...prev, error: 'Name is unchanged.' }));
+      return;
+    }
+
+    setRenameDialog((prev) => ({ ...prev, saving: true, error: undefined }));
+    try {
+      const result = await api.rename(renameDialog.sourcePath, nextName);
+      const paneId = renameDialog.paneId;
+      setPanes((prev) => prev.map((p) => {
+        if (p.id !== paneId) return p;
+        const nextSelected = new Set<string>();
+        for (const path of p.selected) {
+          if (path === renameDialog.sourcePath) {
+            nextSelected.add(result.updated_path);
+          } else {
+            nextSelected.add(path);
+          }
+        }
+        const nextDirectorySizes: Record<string, number> = {};
+        for (const [key, size] of Object.entries(p.directorySizes)) {
+          if (key === renameDialog.sourcePath || key.startsWith(`${renameDialog.sourcePath}/`)) {
+            const suffix = key.slice(renameDialog.sourcePath.length);
+            nextDirectorySizes[`${result.updated_path}${suffix}`] = size;
+            continue;
+          }
+          nextDirectorySizes[key] = size;
+        }
+        return { ...p, selected: nextSelected, directorySizes: nextDirectorySizes };
+      }));
+      setRenameDialog({
+        open: false,
+        paneId: null,
+        sourcePath: '',
+        currentName: '',
+        nextName: '',
+        saving: false,
+      });
+      const pane = getPane(paneId);
+      if (pane?.currentPath) {
+        await loadPane(pane.currentPath, paneId);
+      }
+    } catch (error) {
+      setRenameDialog((prev) => ({ ...prev, saving: false, error: String(error) }));
+    }
   }
 
   return (
@@ -686,13 +1094,17 @@ export function App() {
                 return { ...p, selected: next };
               }))}
               onFileClick={(path) => handleFileClick(pane.id, path)}
-              onOpenInNewPane={(path) => openPathInNewPane(path)}
+              onContextAction={(entry, x, y) => openContextMenu(pane.id, entry, x, y)}
               onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
               onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
-              onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id })}
+              onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id, sources: Array.from(pane.selected) })}
               onDropTarget={(targetPath, sources, move, sourcePaneId) =>
                 handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
               onClose={() => closePane(pane.id)}
+              interactionsDisabled={pane.lockedOperation === 'size_calc'}
+              onCancelSizeCalculation={() => cancelPaneSize(pane.id).catch(console.error)}
+              onDismissSizeResult={() => clearPaneSizeRuntime(pane.id)}
+              formatSize={formatSize}
             />
           ))}
         </section>
@@ -730,18 +1142,88 @@ export function App() {
         </aside>
       </main>
 
+      {contextMenu.open && contextMenu.entry && (
+        <div
+          className="context-menu"
+          style={{
+            left: `${Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220))}px`,
+            top: `${Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320))}px`,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button onClick={() => runContextAction('open')}>Open</button>
+          {contextMenu.entry.is_dir && (
+            <button onClick={() => runContextAction('open_new_pane')}>Open in new pane</button>
+          )}
+          {!contextMenu.entry.is_dir && isPreviewableImage(contextMenu.entry.path) && (
+            <button onClick={() => runContextAction('preview')}>Preview image</button>
+          )}
+          {!contextMenu.entry.is_dir && (
+            <button onClick={() => runContextAction('download')}>Download</button>
+          )}
+          <button onClick={() => runContextAction('copy_path')}>Copy path</button>
+          <button onClick={() => runContextAction('rename')}>Rename</button>
+          {contextMenu.entry.is_dir && (
+            <button onClick={() => runContextAction('calculate_size')}>Calculate size</button>
+          )}
+          <button className="danger" onClick={() => runContextAction('delete')}>Delete</button>
+        </div>
+      )}
+
+      {renameDialog.open && (
+        <div className="dialog-backdrop" onClick={() => setRenameDialog({
+          open: false,
+          paneId: null,
+          sourcePath: '',
+          currentName: '',
+          nextName: '',
+          saving: false,
+        })}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Rename</h3>
+            <p>Rename {renameDialog.currentName}</p>
+            <input
+              value={renameDialog.nextName}
+              onChange={(e) => setRenameDialog((prev) => ({ ...prev, nextName: e.target.value, error: undefined }))}
+              autoFocus
+            />
+            {renameDialog.error && <div className="pane-error">{renameDialog.error}</div>}
+            <div className="dialog-actions">
+              <button onClick={() => setRenameDialog({
+                open: false,
+                paneId: null,
+                sourcePath: '',
+                currentName: '',
+                nextName: '',
+                saving: false,
+              })}>
+                Cancel
+              </button>
+              <button onClick={() => confirmRename().catch(console.error)} disabled={renameDialog.saving}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={confirmDelete.open}
         title="Confirm delete"
         message="Delete selected items? This cannot be undone."
-        onCancel={() => setConfirmDelete({ open: false, paneId: null })}
+        onCancel={() => setConfirmDelete({ open: false, paneId: null, sources: [] })}
         onConfirm={async () => {
           const pane = panes.find((p) => p.id === confirmDelete.paneId);
           if (!pane) return;
-          const deleteJob = await api.del(Array.from(pane.selected));
+          const sources = confirmDelete.sources && confirmDelete.sources.length
+            ? confirmDelete.sources
+            : Array.from(pane.selected);
+          if (!sources.length) return;
+          const deleteJob = await api.del(sources);
           await waitForJobTerminal(deleteJob.id);
-          setConfirmDelete({ open: false, paneId: null });
-          setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, selected: new Set<string>() } : p));
+          setConfirmDelete({ open: false, paneId: null, sources: [] });
+          setPanes((prev) => prev.map((p) => p.id === pane.id ? {
+            ...p,
+            selected: new Set<string>(Array.from(p.selected).filter((path) => !sources.includes(path))),
+          } : p));
           await loadPane(pane.currentPath, pane.id);
           await refreshJobs();
         }}

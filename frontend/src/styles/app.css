@@ -884,6 +884,24 @@ select {
   z-index: 30;
 }
 
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(16, 24, 40, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 248, 252, 0.98));
+  box-shadow: var(--shadow-md);
+}
+
+.context-menu button {
+  justify-content: flex-start;
+  width: 100%;
+}
+
 .dialog {
   width: min(500px, 92vw);
   border-radius: var(--radius-lg);
@@ -966,6 +984,39 @@ select {
   text-align: center;
 }
 
+.pane.pane-locked {
+  position: relative;
+}
+
+.pane-operation-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 12, 20, 0.2);
+  backdrop-filter: blur(1px);
+}
+
+.pane-operation-card {
+  width: min(420px, 94%);
+  border-radius: 12px;
+  border: 1px solid rgba(16, 24, 40, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 254, 0.97));
+  padding: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.pane-operation-card h4 {
+  margin: 0 0 8px;
+}
+
+.pane-operation-card p {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 :root[data-theme='dark'] button {
   border-color: color-mix(in srgb, var(--separator) 85%, #445065);
 }
@@ -974,10 +1025,20 @@ select {
   border-color: color-mix(in srgb, var(--separator) 90%, #7386a2);
 }
 
+:root[data-theme='dark'] .context-menu {
+  border-color: color-mix(in srgb, var(--separator) 90%, #7386a2);
+  background: linear-gradient(180deg, rgba(44, 55, 70, 0.98), rgba(32, 41, 55, 0.98));
+}
+
 :root[data-theme='dark'] .button-link {
   border-color: color-mix(in srgb, var(--separator) 85%, #445065);
   background: linear-gradient(180deg, #2b3443, #202937);
   color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .pane-operation-card {
+  border-color: color-mix(in srgb, var(--separator) 90%, #7386a2);
+  background: linear-gradient(180deg, rgba(44, 55, 70, 0.98), rgba(32, 41, 55, 0.98));
 }
 
 :root[data-theme='dark'] .button-link:hover {

@@ -111,11 +111,26 @@ class DummySettingsStore:
         self.settings = settings
 
 
+class DummySizes:
+    async def create(self, root_path: str):
+        _ = root_path
+        raise NotImplementedError
+
+    async def poll(self, size_id: str, after_seq: int):
+        _ = size_id, after_seq
+        raise KeyError
+
+    async def cancel(self, size_id: str):
+        _ = size_id
+        return False
+
+
 def get_file_content_endpoint(fake_rclone: FakeRclone):
     router = build_router(
         rclone=fake_rclone,
         transfers=DummyTransfers(),
         searches=DummySearches(),
+        sizes=DummySizes(),
         settings_store=DummySettingsStore(),
     )
     for route in router.routes:

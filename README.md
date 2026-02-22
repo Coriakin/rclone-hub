@@ -10,6 +10,7 @@ rclone-hub gives you a visual, multi-pane workspace for exploring remotes, searc
 
 - Multi-pane navigation for side-by-side browsing across remotes.
 - Built-in search with live progress so you can quickly find files across large remote trees.
+- Right-click folder size calculation with live progress, cancel support, and per-pane cached results shown in the Size column.
 - Transfer-focused workflow designed to make file moves clear and predictable.
 - In-app preview for remote `jpg`/`jpeg`/`png`/`gif` files with an indeterminate loading bar and optional download action.
 - Local-first web UI that runs on your machine.
