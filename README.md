@@ -2,6 +2,8 @@
 
 Mac-first, cross-platform local web UI for rclone remotes with multi-pane navigation and safe transfers.
 
+![rclone-hub screenshot](./screenshot1.jpg)
+
 ## Structure
 
 - `/backend`: FastAPI API + transfer engine + sqlite persistence.
@@ -13,7 +15,7 @@ Mac-first, cross-platform local web UI for rclone remotes with multi-pane naviga
 Run backend + frontend together:
 
 ```bash
-cd /Users/andreas/code/rclone-hub
+cd /path/to/rclone-hub
 ./scripts/dev.sh
 ```
 
@@ -47,7 +49,7 @@ When ports are set in `.env`, `./scripts/dev.sh` treats them as fixed and exits 
 ## Backend quickstart
 
 ```bash
-cd /Users/andreas/code/rclone-hub/backend
+cd /path/to/rclone-hub/backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
@@ -57,7 +59,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ## Frontend quickstart
 
 ```bash
-cd /Users/andreas/code/rclone-hub/frontend
+cd /path/to/rclone-hub/frontend
 npm install
 npm run dev
 ```
