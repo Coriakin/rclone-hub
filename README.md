@@ -11,6 +11,7 @@ rclone-hub gives you a visual, multi-pane workspace for exploring remotes, searc
 - Multi-pane navigation for side-by-side browsing across remotes.
 - Built-in search with live progress so you can quickly find files across large remote trees.
 - Transfer-focused workflow designed to make file moves clear and predictable.
+- In-app preview for remote `jpg`/`jpeg`/`png`/`gif` files with an indeterminate loading bar and optional download action.
 - Local-first web UI that runs on your machine.
 - Cross-platform setup using a single startup script.
 - Built around `rclone` remotes so you can keep using the storage you already have.

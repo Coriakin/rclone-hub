@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from app.models.schemas import (
     CancelRequest,
@@ -19,6 +23,12 @@ from app.services.transfers import TransferManager
 
 def build_router(rclone: RcloneClient, transfers: TransferManager, searches: SearchManager, settings_store) -> APIRouter:
     router = APIRouter(prefix="/api")
+    image_content_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+    }
 
     @router.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -43,6 +53,36 @@ def build_router(rclone: RcloneClient, transfers: TransferManager, searches: Sea
             return {"items": [item.model_dump() for item in items]}
         except RcloneError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/files/content")
+    def file_content(
+        remote_path: str = Query(...),
+        disposition: Literal["inline", "attachment"] = Query("inline"),
+    ):
+        try:
+            entry = rclone.stat(remote_path)
+            if entry.is_dir:
+                raise HTTPException(status_code=400, detail="remote_path must reference a file")
+
+            suffix = Path(entry.name or rclone.path_basename(remote_path)).suffix.lower()
+            media_type = image_content_types.get(suffix, "application/octet-stream")
+            if disposition == "inline" and media_type == "application/octet-stream":
+                raise HTTPException(status_code=400, detail="inline preview is only supported for jpg/jpeg/png/gif")
+
+            filename = entry.name or rclone.path_basename(remote_path) or "file"
+            stream = rclone.open_cat_stream(remote_path)
+        except RcloneError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        def iterator():
+            try:
+                yield from stream.iter_chunks()
+            finally:
+                stream.close()
+
+        safe_filename = filename.replace('"', "")
+        headers = {"Content-Disposition": f'{disposition}; filename="{safe_filename}"'}
+        return StreamingResponse(iterator(), media_type=media_type, headers=headers)
 
     @router.post("/searches", response_model=SearchCreateResponse)
     async def create_search(req: SearchCreateRequest) -> SearchCreateResponse:
