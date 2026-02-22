@@ -7,10 +7,12 @@ type Props = {
     concurrency: number;
     verify_mode: 'strict';
   };
+  appearance: 'light' | 'dark';
+  onAppearanceChange: (value: 'light' | 'dark') => void;
   onSave: (v: { staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' }) => Promise<void>;
 };
 
-export function SettingsPanel({ initial, onSave }: Props) {
+export function SettingsPanel({ initial, appearance, onAppearanceChange, onSave }: Props) {
   const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
 
@@ -26,6 +28,16 @@ export function SettingsPanel({ initial, onSave }: Props) {
   return (
     <section className="settings-panel">
       <h3>Settings</h3>
+      <label>
+        Appearance
+        <select
+          value={appearance}
+          onChange={(e) => onAppearanceChange(e.target.value === 'dark' ? 'dark' : 'light')}
+        >
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
       <label>
         Staging path
         <input
@@ -50,6 +62,7 @@ export function SettingsPanel({ initial, onSave }: Props) {
         />
       </label>
       <button onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save settings'}</button>
+      <div className="settings-note">Appearance is saved locally for this browser.</div>
     </section>
   );
 }

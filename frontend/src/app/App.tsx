@@ -8,6 +8,8 @@ import { TransferQueuePanel } from '../components/TransferQueuePanel';
 import type { PaneState } from '../state/types';
 
 let paneCounter = 0;
+const APPEARANCE_KEY = 'rcloneHub.appearance';
+type Appearance = 'light' | 'dark';
 
 function newPane(path = ''): PaneState {
   paneCounter += 1;
@@ -32,6 +34,14 @@ function newPane(path = ''): PaneState {
 }
 
 export function App() {
+  const [appearance, setAppearance] = useState<Appearance>(() => {
+    try {
+      const saved = window.localStorage.getItem(APPEARANCE_KEY);
+      return saved === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
   const [openTabs, setOpenTabs] = useState<{ queue: boolean; settings: boolean; diagnostics: boolean }>({
     queue: true,
     settings: false,
@@ -111,6 +121,15 @@ export function App() {
   useEffect(() => {
     panesRef.current = panes;
   }, [panes]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = appearance;
+    try {
+      window.localStorage.setItem(APPEARANCE_KEY, appearance);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [appearance]);
 
   useEffect(() => {
     return () => {
@@ -619,10 +638,15 @@ export function App() {
                 <TransferQueuePanel jobs={jobs} onCancel={(id) => api.cancel(id).then(refreshJobs).catch(console.error)} />
               )}
               {openTabs.settings && settings && (
-                <SettingsPanel initial={settings} onSave={async (s) => {
-                  await api.saveSettings(s);
-                  await loadSettings();
-                }} />
+                <SettingsPanel
+                  initial={settings}
+                  appearance={appearance}
+                  onAppearanceChange={setAppearance}
+                  onSave={async (s) => {
+                    await api.saveSettings(s);
+                    await loadSettings();
+                  }}
+                />
               )}
               {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} logs={diagnosticsLogs} />}
             </div>
