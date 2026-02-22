@@ -277,7 +277,7 @@ input, select {
   all: unset;
   cursor: pointer;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) 52px 84px 146px;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -335,6 +335,23 @@ input, select {
 .entry-kind {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.entry-size {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-modified {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .queue-panel, .settings-panel, .diagnostics-panel {
