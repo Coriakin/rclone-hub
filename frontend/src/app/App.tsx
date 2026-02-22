@@ -35,7 +35,7 @@ export function App() {
   const [openTabs, setOpenTabs] = useState<{ queue: boolean; settings: boolean; diagnostics: boolean }>({
     queue: true,
     settings: false,
-    diagnostics: true,
+    diagnostics: false,
   });
   const [remotes, setRemotes] = useState<string[]>([]);
   const [panes, setPanes] = useState<PaneState[]>([newPane('')]);
