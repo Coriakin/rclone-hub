@@ -82,7 +82,8 @@ ensure_backend_env() {
     (
       cd "$BACKEND_DIR"
       source .venv/bin/activate
-      pip install -e '.[dev]'
+      python -m pip install --upgrade "pip>=23.2" "setuptools>=68" "wheel>=0.41"
+      python -m pip install -e '.[dev]'
     )
   fi
 }
