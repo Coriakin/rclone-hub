@@ -46,6 +46,10 @@ function newPane(path = ''): PaneState {
 
 export function App() {
   const initialPane = useMemo(() => newPane(''), []);
+  const [isDesktopWide, setIsDesktopWide] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    return window.matchMedia('(min-width: 1281px)').matches;
+  });
   const [appearance, setAppearance] = useState<Appearance>(() => {
     try {
       const saved = window.localStorage.getItem(APPEARANCE_KEY);
@@ -55,7 +59,7 @@ export function App() {
     }
   });
   const [openTabs, setOpenTabs] = useState<{ queue: boolean; settings: boolean; diagnostics: boolean }>({
-    queue: true,
+    queue: false,
     settings: false,
     diagnostics: false,
   });
@@ -114,6 +118,11 @@ export function App() {
   const processedTransferJobsRef = useRef<Set<string>>(new Set());
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const panesRef = useRef<PaneState[]>(panes);
+  const hasActiveTransfers = useMemo(
+    () => jobs.some((job) => job.status === 'queued' || job.status === 'running'),
+    [jobs]
+  );
+  const prevHasActiveTransfersRef = useRef<boolean>(hasActiveTransfers);
 
   async function refreshRemotes() {
     const r = await api.remotes();
@@ -175,6 +184,27 @@ export function App() {
       // Ignore storage failures.
     }
   }, [appearance]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(min-width: 1281px)');
+    setIsDesktopWide(media.matches);
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsDesktopWide(event.matches);
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    const hadActiveTransfers = prevHasActiveTransfersRef.current;
+    if (isDesktopWide && !hadActiveTransfers && hasActiveTransfers) {
+      setOpenTabs({ queue: true, settings: false, diagnostics: false });
+    } else if (isDesktopWide && hadActiveTransfers && !hasActiveTransfers) {
+      setOpenTabs((prev) => ({ ...prev, queue: false }));
+    }
+    prevHasActiveTransfersRef.current = hasActiveTransfers;
+  }, [hasActiveTransfers, isDesktopWide]);
 
   useEffect(() => {
     return () => {

@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { App } from './App';
+import type { Job } from '../api/client';
 
 const apiMock = vi.hoisted(() => ({
   health: vi.fn(),
@@ -29,7 +30,15 @@ vi.mock('../api/client', () => ({
 
 async function flush(ms = 0) {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    if (ms > 0) {
+      if (vi.isFakeTimers()) {
+        vi.advanceTimersByTime(ms);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+      }
+      return;
+    }
+    await Promise.resolve();
   });
 }
 
@@ -46,12 +55,51 @@ async function waitFor(check: () => void, timeoutMs = 1200) {
   check();
 }
 
+function mockMatchMedia(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+function tabButton(container: HTMLElement, label: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll('button'))
+    .find((button) => button.textContent?.trim() === label) as HTMLButtonElement | undefined;
+}
+
+function job(status: Job['status']): Job {
+  return {
+    id: `job-${status}`,
+    operation: 'copy',
+    source_remote: 'src:',
+    destination_remote: 'dst:',
+    destination_dir: 'dst:/path',
+    sources: ['src:/file.txt'],
+    status,
+    created_at: '2026-02-23T00:00:00.000Z',
+    started_at: '2026-02-23T00:00:01.000Z',
+    completed_at: status === 'queued' || status === 'running' ? null : '2026-02-23T00:00:02.000Z',
+    logs: [],
+    results: [],
+  };
+}
+
 describe('App image preview', () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    mockMatchMedia(true);
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -125,5 +173,110 @@ describe('App image preview', () => {
     expect(container.querySelector('.image-preview-body img')).toBeNull();
     const selectedRow = Array.from(container.querySelectorAll('.file-row')).find((row) => row.classList.contains('is-selected'));
     expect(selectedRow).toBeTruthy();
+  });
+});
+
+describe('App queue drawer behavior', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  async function renderAppWithJobsSequence(sequence: Job[][], desktopWide: boolean) {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    mockMatchMedia(desktopWide);
+    vi.useFakeTimers();
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    apiMock.remotes.mockResolvedValue({ remotes: [] });
+    apiMock.settings.mockResolvedValue({
+      staging_path: '/tmp/rclone-hub',
+      staging_cap_bytes: 1024,
+      concurrency: 1,
+      verify_mode: 'strict',
+    });
+    apiMock.list.mockResolvedValue({ items: [] });
+    apiMock.fileContentUrl.mockImplementation((path: string, disposition: 'inline' | 'attachment' = 'inline') =>
+      `/api/files/content?remote_path=${encodeURIComponent(path)}&disposition=${disposition}`
+    );
+    sequence.forEach((jobs) => apiMock.jobs.mockResolvedValueOnce({ jobs }));
+    apiMock.jobs.mockResolvedValue({ jobs: sequence[sequence.length - 1] ?? [] });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flush();
+  }
+
+  async function tickJobsPoll() {
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+    await flush();
+  }
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  test('desktop: starts collapsed, auto-opens on active transfer, auto-hides when transfers finish', async () => {
+    await renderAppWithJobsSequence([[], [job('running')], [job('success')]], true);
+
+    const queueTab = tabButton(container, 'Queue');
+    const drawer = container.querySelector('.right-drawer');
+    expect(queueTab).toBeTruthy();
+    expect(drawer).toBeTruthy();
+    expect(queueTab?.classList.contains('active')).toBe(false);
+    expect(drawer?.classList.contains('open')).toBe(false);
+
+    await tickJobsPoll();
+    expect(queueTab?.classList.contains('active')).toBe(true);
+    expect(drawer?.classList.contains('open')).toBe(true);
+
+    await tickJobsPoll();
+    expect(queueTab?.classList.contains('active')).toBe(false);
+    expect(drawer?.classList.contains('open')).toBe(false);
+  });
+
+  test('desktop: active transfer forces queue tab to foreground', async () => {
+    await renderAppWithJobsSequence([[], [job('running')]], true);
+
+    const queueTab = tabButton(container, 'Queue');
+    const settingsTab = tabButton(container, 'Settings');
+    expect(queueTab).toBeTruthy();
+    expect(settingsTab).toBeTruthy();
+
+    settingsTab?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(settingsTab?.classList.contains('active')).toBe(true);
+    expect(queueTab?.classList.contains('active')).toBe(false);
+
+    await tickJobsPoll();
+    expect(queueTab?.classList.contains('active')).toBe(true);
+    expect(settingsTab?.classList.contains('active')).toBe(false);
+  });
+
+  test('mobile: does not auto-open or auto-close queue tab', async () => {
+    await renderAppWithJobsSequence([[], [job('running')], [job('success')]], false);
+
+    const queueTab = tabButton(container, 'Queue');
+    expect(queueTab).toBeTruthy();
+    expect(queueTab?.classList.contains('active')).toBe(false);
+
+    await tickJobsPoll();
+    expect(queueTab?.classList.contains('active')).toBe(false);
+
+    queueTab?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(queueTab?.classList.contains('active')).toBe(true);
+
+    await tickJobsPoll();
+    expect(queueTab?.classList.contains('active')).toBe(true);
   });
 });
