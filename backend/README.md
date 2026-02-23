@@ -6,7 +6,8 @@
 cd backend
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+python -m pip install --upgrade "pip>=23.2" "setuptools>=68" "wheel>=0.41"
+python -m pip install -e '.[dev]'
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 

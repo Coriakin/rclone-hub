@@ -29,6 +29,15 @@ cd rclone-hub
 
 Then open the local URL shown in your terminal (typically `http://127.0.0.1:5173`).
 
+`./scripts/dev.sh` automatically bootstraps backend packaging tools (`pip`, `setuptools`, `wheel`) so editable installs work on older system Python virtualenv defaults.
+
+If backend setup failed previously, rerun `./scripts/dev.sh`. If it still fails, recreate the backend virtualenv and rerun:
+
+```bash
+rm -rf backend/.venv
+./scripts/dev.sh
+```
+
 For advanced defaults (for example fixed ports), you can use the root `.env` file. See the docs section below for deeper setup details.
 
 ## Who It's For
