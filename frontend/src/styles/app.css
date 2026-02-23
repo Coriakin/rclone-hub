@@ -252,6 +252,8 @@ select {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  position: relative;
+  z-index: 0;
   display: grid;
   grid-template-rows: auto auto 1fr;
 }
@@ -259,6 +261,7 @@ select {
 .pane.active {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--separator));
   box-shadow: var(--shadow-md), 0 0 0 2px rgba(10, 103, 216, 0.15);
+  z-index: 2;
 }
 
 .pane-toolbar {
@@ -440,6 +443,32 @@ select {
 }
 
 .search-progress-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.search-advanced {
+  border-top: 1px solid color-mix(in srgb, var(--separator) 84%, #d5d9df);
+  padding-top: 8px;
+}
+
+.search-advanced > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  user-select: none;
+}
+
+.search-advanced-body {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.search-advanced-note {
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -985,7 +1014,7 @@ select {
 }
 
 .pane.pane-locked {
-  position: relative;
+  z-index: 5;
 }
 
 .pane-operation-overlay {
@@ -1096,6 +1125,10 @@ select {
 
 :root[data-theme='dark'] .search-progress-text {
   color: #c2cfde;
+}
+
+:root[data-theme='dark'] .search-advanced {
+  border-top-color: rgba(170, 186, 206, 0.2);
 }
 
 :root[data-theme='dark'] .file-list {

@@ -114,6 +114,7 @@ class SearchCreateRequest(BaseModel):
     root_path: str
     filename_query: str = "*"
     min_size_mb: float | None = Field(default=None, ge=0)
+    search_mode: Literal["standard", "empty_dirs"] = "standard"
 
 
 class SearchCreateResponse(BaseModel):
