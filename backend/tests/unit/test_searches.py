@@ -126,3 +126,22 @@ async def test_search_manager_cleanup_purges_terminal_sessions():
             await manager.poll(search_id, 0)
     finally:
         await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_empty_dir_search_returns_only_empty_directories_and_ignores_filters():
+    manager = SearchManager(client=FakeRclone())
+    search_id = await manager.create("r:root", "*.bin", 999.0, search_mode="empty_dirs")
+    events = await collect_events(manager, search_id)
+    result_paths = [event.entry.path for event in events if event.type == "result"]
+
+    assert result_paths == []
+
+    manager.client.tree["r:root/sub/empty"] = []
+    manager.client.tree["r:root/sub"].append(Entry(name="empty", path="r:root/sub/empty", is_dir=True, size=0))
+
+    search_id_with_empty = await manager.create("r:root", "*.bin", 999.0, search_mode="empty_dirs")
+    events_with_empty = await collect_events(manager, search_id_with_empty)
+    result_paths_with_empty = [event.entry.path for event in events_with_empty if event.type == "result"]
+
+    assert result_paths_with_empty == ["r:root/sub/empty"]
