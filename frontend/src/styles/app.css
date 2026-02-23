@@ -323,6 +323,17 @@ select {
   border-right: 0;
 }
 
+.mode-group button.active {
+  position: relative;
+  color: color-mix(in srgb, var(--accent) 72%, #0d2f5f);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 58%, #ffffff), color-mix(in srgb, var(--accent-soft) 36%, #f2f6ff));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 46%, var(--separator)),
+    0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+  z-index: 1;
+}
+
 .app-mode-tabs {
   margin-left: 8px;
 }
@@ -1269,6 +1280,15 @@ select {
 
 :root[data-theme='dark'] .mode-group {
   background: #232d3b;
+}
+
+:root[data-theme='dark'] .mode-group button.active {
+  color: #e6f0ff;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 74%, #2f3a4a), color-mix(in srgb, var(--accent-soft) 50%, #273243));
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 170, 255, 0.5),
+    0 0 0 1px rgba(75, 146, 255, 0.24);
 }
 
 :root[data-theme='dark'] .mode-btn.active {
