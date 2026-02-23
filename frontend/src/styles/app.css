@@ -189,6 +189,7 @@ select {
 .topbar-title {
   display: inline-flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -229,6 +230,10 @@ select {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+}
+
+.config-main {
+  min-height: 0;
 }
 
 .panes-row {
@@ -318,6 +323,10 @@ select {
   border-right: 0;
 }
 
+.app-mode-tabs {
+  margin-left: 8px;
+}
+
 .mode-btn {
   min-width: 78px;
   color: var(--text-secondary);
@@ -367,6 +376,152 @@ select {
 
 .pane-error {
   color: var(--danger);
+}
+
+.pane-success {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--success);
+}
+
+.config-mode-shell {
+  border: 1px solid rgba(16, 24, 40, 0.11);
+  background: var(--surface-elevated);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  min-height: 0;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.config-mode-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.config-mode-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.config-remote-list {
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  max-height: calc(100vh - 240px);
+  overflow: auto;
+}
+
+.config-remote-list h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.config-remote-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.config-remote-item.active {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--separator));
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface-elevated));
+}
+
+.config-remote-item small {
+  color: var(--text-secondary);
+}
+
+.config-editor {
+  min-width: 0;
+  min-height: 0;
+}
+
+.config-card {
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.config-card h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.config-fields {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 320px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.config-field {
+  display: grid;
+  gap: 5px;
+}
+
+.config-field span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.config-field small {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-line;
+}
+
+.config-field input,
+.config-field select {
+  width: 100%;
+}
+
+.config-muted {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.config-session-card {
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--separator));
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-elevated));
+}
+
+.config-session-card h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.config-session-help {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.config-advanced-toggle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.remote-field-input-with-select {
+  display: grid;
+  gap: 6px;
 }
 
 .search-panel {
@@ -1143,6 +1298,18 @@ select {
   background: #212c3a;
 }
 
+:root[data-theme='dark'] .config-mode-shell,
+:root[data-theme='dark'] .config-card,
+:root[data-theme='dark'] .config-remote-list {
+  border-color: rgba(170, 186, 206, 0.2);
+  background: color-mix(in srgb, var(--surface-elevated) 92%, #1f2835);
+}
+
+:root[data-theme='dark'] .config-session-card {
+  border-color: rgba(75, 146, 255, 0.45);
+  background: color-mix(in srgb, rgba(75, 146, 255, 0.22) 60%, #1f2835);
+}
+
 :root[data-theme='dark'] .queue-route-direct {
   background: #243f63;
   color: #b9d8ff;
@@ -1256,6 +1423,22 @@ select {
   .search-row {
     grid-template-columns: 1fr;
     align-items: center;
+  }
+
+  .topbar-title {
+    flex-wrap: wrap;
+  }
+
+  .app-mode-tabs {
+    margin-left: 0;
+  }
+
+  .config-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-remote-list {
+    max-height: 240px;
   }
 }
 

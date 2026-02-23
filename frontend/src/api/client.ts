@@ -74,6 +74,64 @@ export type SizeDoneEvent = {
 
 export type SizeEvent = SizeProgressEvent | SizeDoneEvent;
 
+export type RemoteSummary = {
+  name: string;
+  type: 'b2' | 'drive' | 'smb' | 'crypt' | string;
+  source: string;
+  description: string;
+};
+
+export type RemoteConfigExample = {
+  value: string;
+  help: string;
+};
+
+export type RemoteConfigField = {
+  name: string;
+  type: string;
+  required: boolean;
+  advanced: boolean;
+  is_password: boolean;
+  sensitive: boolean;
+  exclusive: boolean;
+  default: string;
+  help: string;
+  examples: RemoteConfigExample[];
+  value?: string;
+};
+
+export type RemoteConfigSchema = {
+  type: string;
+  description: string;
+  fields: RemoteConfigField[];
+};
+
+export type RemoteConfigView = {
+  name: string;
+  type: string;
+  fields: RemoteConfigField[];
+};
+
+export type ConfigSessionQuestion = {
+  state: string;
+  option: {
+    Name?: string;
+    Help?: string;
+    Default?: unknown;
+    Examples?: Array<{ Value: string; Help: string }>;
+    Required?: boolean;
+    IsPassword?: boolean;
+    Type?: string;
+    Exclusive?: boolean;
+  };
+  error: string;
+};
+
+export type ConfigSessionResponse = {
+  done: boolean;
+  question: ConfigSessionQuestion | null;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000/api';
 const DEFAULT_TIMEOUT_MS = 45000;
 
@@ -161,6 +219,51 @@ export const api = {
   saveSettings: (payload: { staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' }) =>
     json(`${API_BASE}/settings`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  remoteTypes: () => json<{ types: RemoteConfigSchema[] }>(`${API_BASE}/remote-types`),
+  remotesDetails: () => json<{ remotes: RemoteSummary[] }>(`${API_BASE}/remotes/details`),
+  remoteConfig: (name: string) => json<RemoteConfigView>(`${API_BASE}/remotes/${encodeURIComponent(name)}/config`),
+  createRemote: (payload: { name: string; type: string; values: Record<string, unknown> }) =>
+    json<{ ok: boolean }>(`${API_BASE}/remotes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  updateRemote: (name: string, payload: { values: Record<string, unknown> }) =>
+    json<{ ok: boolean }>(`${API_BASE}/remotes/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteRemote: (name: string) =>
+    json<{ ok: boolean }>(`${API_BASE}/remotes/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+  startRemoteConfigSession: (payload: {
+    operation: 'create' | 'update';
+    name: string;
+    type?: string;
+    values: Record<string, unknown>;
+    ask_all?: boolean;
+  }) =>
+    json<ConfigSessionResponse>(`${API_BASE}/remotes/config-session/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  continueRemoteConfigSession: (payload: {
+    operation: 'create' | 'update';
+    name: string;
+    type?: string;
+    values: Record<string, unknown>;
+    state: string;
+    result: string;
+    ask_all?: boolean;
+  }) =>
+    json<ConfigSessionResponse>(`${API_BASE}/remotes/config-session/continue`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),

@@ -22,6 +22,14 @@ const apiMock = vi.hoisted(() => ({
   cancel: vi.fn(),
   settings: vi.fn(),
   saveSettings: vi.fn(),
+  remoteTypes: vi.fn(),
+  remotesDetails: vi.fn(),
+  remoteConfig: vi.fn(),
+  createRemote: vi.fn(),
+  updateRemote: vi.fn(),
+  deleteRemote: vi.fn(),
+  startRemoteConfigSession: vi.fn(),
+  continueRemoteConfigSession: vi.fn(),
 }));
 
 vi.mock('../api/client', () => ({
@@ -80,14 +88,10 @@ function job(status: Job['status']): Job {
   return {
     id: `job-${status}`,
     operation: 'copy',
-    source_remote: 'src:',
-    destination_remote: 'dst:',
     destination_dir: 'dst:/path',
     sources: ['src:/file.txt'],
     status,
     created_at: '2026-02-23T00:00:00.000Z',
-    started_at: '2026-02-23T00:00:01.000Z',
-    completed_at: status === 'queued' || status === 'running' ? null : '2026-02-23T00:00:02.000Z',
     logs: [],
     results: [],
   };
@@ -118,6 +122,9 @@ describe('App image preview', () => {
     apiMock.fileContentUrl.mockImplementation((path: string, disposition: 'inline' | 'attachment' = 'inline') =>
       `/api/files/content?remote_path=${encodeURIComponent(path)}&disposition=${disposition}`
     );
+    apiMock.remoteTypes.mockResolvedValue({ types: [] });
+    apiMock.remotesDetails.mockResolvedValue({ remotes: [] });
+    apiMock.remoteConfig.mockResolvedValue({ name: '', type: 'b2', fields: [] });
 
     await act(async () => {
       root.render(<App />);
@@ -200,6 +207,9 @@ describe('App queue drawer behavior', () => {
     apiMock.fileContentUrl.mockImplementation((path: string, disposition: 'inline' | 'attachment' = 'inline') =>
       `/api/files/content?remote_path=${encodeURIComponent(path)}&disposition=${disposition}`
     );
+    apiMock.remoteTypes.mockResolvedValue({ types: [] });
+    apiMock.remotesDetails.mockResolvedValue({ remotes: [] });
+    apiMock.remoteConfig.mockResolvedValue({ name: '', type: 'b2', fields: [] });
     sequence.forEach((jobs) => apiMock.jobs.mockResolvedValueOnce({ jobs }));
     apiMock.jobs.mockResolvedValue({ jobs: sequence[sequence.length - 1] ?? [] });
 
@@ -278,5 +288,71 @@ describe('App queue drawer behavior', () => {
 
     await tickJobsPoll();
     expect(queueTab?.classList.contains('active')).toBe(true);
+  });
+});
+
+describe('App configuration mode', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    mockMatchMedia(true);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    apiMock.remotes.mockResolvedValue({ remotes: [] });
+    apiMock.jobs.mockResolvedValue({ jobs: [] });
+    apiMock.settings.mockResolvedValue({
+      staging_path: '/tmp/rclone-hub',
+      staging_cap_bytes: 1024,
+      concurrency: 1,
+      verify_mode: 'strict',
+    });
+    apiMock.list.mockResolvedValue({ items: [] });
+    apiMock.fileContentUrl.mockImplementation((path: string, disposition: 'inline' | 'attachment' = 'inline') =>
+      `/api/files/content?remote_path=${encodeURIComponent(path)}&disposition=${disposition}`
+    );
+    apiMock.remoteTypes.mockResolvedValue({
+      types: [{ type: 'b2', description: 'Backblaze B2', fields: [] }],
+    });
+    apiMock.remotesDetails.mockResolvedValue({
+      remotes: [{ name: 'b2r', type: 'b2', source: 'file', description: '' }],
+    });
+    apiMock.remoteConfig.mockResolvedValue({
+      name: 'b2r',
+      type: 'b2',
+      fields: [],
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flush();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  test('switches to configuration mode and loads remote data', async () => {
+    const configTab = tabButton(container, 'Configuration');
+    expect(configTab).toBeTruthy();
+    configTab?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Configured remotes');
+      expect(container.textContent).toContain('Create remote');
+      expect(container.textContent).toContain('b2r');
+    });
+
+    expect(apiMock.remoteTypes).toHaveBeenCalled();
+    expect(apiMock.remotesDetails).toHaveBeenCalled();
   });
 });
