@@ -18,6 +18,7 @@ class SearchSession:
     root_path: str
     filename_query: str
     min_size_bytes: int | None
+    search_mode: str = "standard"
     created_at: float = field(default_factory=time.monotonic)
     last_polled_at: float = field(default_factory=time.monotonic)
     seq: int = 0
@@ -68,15 +69,17 @@ class SearchManager:
                 except asyncio.CancelledError:
                     pass
 
-    async def create(self, root_path: str, filename_query: str, min_size_mb: float | None) -> str:
+    async def create(self, root_path: str, filename_query: str, min_size_mb: float | None, search_mode: str = "standard") -> str:
         query = filename_query.strip() or "*"
-        min_size_bytes = None if min_size_mb is None else int(min_size_mb * 1024 * 1024)
+        mode = search_mode if search_mode in {"standard", "empty_dirs"} else "standard"
+        min_size_bytes = None if min_size_mb is None or mode == "empty_dirs" else int(min_size_mb * 1024 * 1024)
         search_id = str(uuid.uuid4())
         session = SearchSession(
             id=search_id,
             root_path=root_path,
             filename_query=query,
             min_size_bytes=min_size_bytes,
+            search_mode=mode,
         )
 
         async with self.lock:
@@ -209,10 +212,22 @@ class SearchManager:
                     return
                 if entry.is_dir:
                     dirs.append(entry.path)
+                if session.search_mode == "empty_dirs":
+                    continue
                 if not self._matches(session, entry):
                     continue
                 entry.parent_path = self._parent_path(entry.path)
                 await self._emit_result(session, entry)
+
+            if session.search_mode == "empty_dirs" and len(items) == 0:
+                result = Entry(
+                    name=self._basename(current_dir),
+                    path=current_dir,
+                    parent_path=self._parent_path(current_dir),
+                    is_dir=True,
+                    size=0,
+                )
+                await self._emit_result(session, result)
 
         await self._emit_done(session, "success")
 
@@ -244,3 +259,14 @@ class SearchManager:
         if len(parts) == 1:
             return f"{remote}:"
         return f"{remote}:{'/'.join(parts[:-1])}"
+
+    @staticmethod
+    def _basename(path: str) -> str:
+        if ":" not in path:
+            normalized = path.strip("/")
+            return normalized.split("/")[-1] if normalized else path
+        remote, rel = path.split(":", 1)
+        rel = rel.strip("/")
+        if not rel:
+            return f"{remote}:"
+        return rel.split("/")[-1]

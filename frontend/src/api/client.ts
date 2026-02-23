@@ -97,7 +97,7 @@ export const api = {
   list: (remotePath: string) => json<{ items: Entry[] }>(`${API_BASE}/list?remote_path=${encodeURIComponent(remotePath)}&recursive=false`),
   fileContentUrl: (remotePath: string, disposition: 'inline' | 'attachment' = 'inline') =>
     `${API_BASE}/files/content?remote_path=${encodeURIComponent(remotePath)}&disposition=${disposition}`,
-  startSearch: (payload: { root_path: string; filename_query: string; min_size_mb: number | null }) =>
+  startSearch: (payload: { root_path: string; filename_query: string; min_size_mb: number | null; search_mode?: 'standard' | 'empty_dirs' }) =>
     json<{ search_id: string }>(`${API_BASE}/searches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

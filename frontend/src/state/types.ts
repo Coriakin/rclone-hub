@@ -5,6 +5,7 @@ export type PaneMode = 'browse' | 'select' | 'search';
 export type PaneSearchState = {
   filenameQuery: string;
   minSizeMb: string;
+  mode: 'standard' | 'empty_dirs';
   running: boolean;
   searchId?: string;
   currentDir?: string;
@@ -37,7 +38,7 @@ export type PaneState = {
   search: PaneSearchState;
   sizeCalc: PaneSizeCalcState;
   directorySizes: Record<string, number>;
-  lockedOperation: null | 'size_calc';
+  lockedOperation: null | 'size_calc' | 'search';
   selected: Set<string>;
   loading: boolean;
   error?: string;

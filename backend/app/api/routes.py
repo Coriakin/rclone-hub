@@ -97,6 +97,7 @@ def build_router(rclone: RcloneClient, transfers: TransferManager, searches: Sea
                 root_path=req.root_path,
                 filename_query=req.filename_query,
                 min_size_mb=req.min_size_mb,
+                search_mode=req.search_mode,
             )
             return SearchCreateResponse(search_id=search_id)
         except RcloneError as exc:

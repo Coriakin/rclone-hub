@@ -24,6 +24,7 @@ function newPane(path = ''): PaneState {
     search: {
       filenameQuery: '*',
       minSizeMb: '',
+      mode: 'standard',
       running: false,
       scannedDirs: 0,
       matchedCount: 0,
@@ -325,12 +326,14 @@ export function App() {
   function clearPaneSearchRuntime(paneId: string, error?: string) {
     setPanes((prev) => prev.map((p) => p.id === paneId ? {
       ...p,
+      lockedOperation: p.lockedOperation === 'search' ? null : p.lockedOperation,
       search: {
         ...p.search,
         running: false,
         searchId: undefined,
         currentDir: undefined,
         scannedDirs: 0,
+        matchedCount: 0,
         eventCursor: 0,
         error,
       },
@@ -582,6 +585,7 @@ export function App() {
       return {
         ...p,
         items: nextItems,
+        lockedOperation: running ? 'search' : (p.lockedOperation === 'search' ? null : p.lockedOperation),
         search: {
           ...p.search,
           currentDir,
@@ -601,7 +605,7 @@ export function App() {
     while (true) {
       const pane = getPane(paneId);
       const hasDifferentSearchId = !!pane?.search.searchId && pane.search.searchId !== searchId;
-      if (!pane || pane.mode !== 'search' || hasDifferentSearchId) {
+      if (!pane || pane.mode !== 'search' || !pane.search.running || hasDifferentSearchId) {
         try {
           await api.cancelSearch(searchId);
         } catch {
@@ -644,25 +648,30 @@ export function App() {
     }
   }
 
-  async function startPaneSearch(paneId: string) {
+  async function startPaneSearch(paneId: string, searchMode: 'standard' | 'empty_dirs' = 'standard') {
     const pane = getPane(paneId);
-    if (!pane?.currentPath || pane.lockedOperation) return;
+    if (!pane?.currentPath || pane.search.running || pane.sizeCalc.running) return;
     await cancelPaneSearch(paneId);
 
-    const minSizeRaw = pane.search.minSizeMb.trim();
-    const parsedMinSizeMb = minSizeRaw ? Number(minSizeRaw) : Number.NaN;
-    if (minSizeRaw && (!Number.isFinite(parsedMinSizeMb) || parsedMinSizeMb < 0)) {
-      clearPaneSearchRuntime(paneId, 'Min size must be a non-negative number.');
-      return;
+    let minSizeMb: number | null = null;
+    if (searchMode !== 'empty_dirs') {
+      const minSizeRaw = pane.search.minSizeMb.trim();
+      const parsedMinSizeMb = minSizeRaw ? Number(minSizeRaw) : Number.NaN;
+      if (minSizeRaw && (!Number.isFinite(parsedMinSizeMb) || parsedMinSizeMb < 0)) {
+        clearPaneSearchRuntime(paneId, 'Min size must be a non-negative number.');
+        return;
+      }
+      minSizeMb = minSizeRaw ? parsedMinSizeMb : null;
     }
-    const minSizeMb = minSizeRaw ? parsedMinSizeMb : null;
 
     setPanes((prev) => prev.map((p) => p.id === paneId ? {
       ...p,
       items: [],
       error: undefined,
+      lockedOperation: 'search',
       search: {
         ...p.search,
+        mode: searchMode,
         running: true,
         scannedDirs: 0,
         matchedCount: 0,
@@ -675,16 +684,18 @@ export function App() {
     try {
       const created = await api.startSearch({
         root_path: pane.currentPath,
-        filename_query: pane.search.filenameQuery || '*',
+        filename_query: searchMode === 'empty_dirs' ? '*' : (pane.search.filenameQuery || '*'),
         min_size_mb: minSizeMb,
+        search_mode: searchMode,
       });
       pushDiagnostics(
         'info',
         `SEARCH/${created.search_id.slice(0, 8)}`,
-        `pane=${paneId} search started root=${pane.currentPath} query=${pane.search.filenameQuery || '*'} min_size_mb=${minSizeMb ?? 'none'}`
+        `pane=${paneId} search started root=${pane.currentPath} mode=${searchMode} query=${searchMode === 'empty_dirs' ? '(ignored)' : (pane.search.filenameQuery || '*')} min_size_mb=${searchMode === 'empty_dirs' ? '(ignored)' : (minSizeMb ?? 'none')}`
       );
       setPanes((prev) => prev.map((p) => p.id === paneId ? {
         ...p,
+        lockedOperation: 'search',
         search: { ...p.search, searchId: created.search_id, running: true },
       } : p));
       pollSearch(paneId, created.search_id).catch(console.error);
@@ -1103,6 +1114,7 @@ export function App() {
               onSetMode={async (mode) => {
                 const current = getPane(pane.id);
                 if (current?.mode === mode) return;
+                if (current?.search.running) return;
                 if (mode !== 'search') {
                   await cancelPaneSearch(pane.id);
                 }
@@ -1115,7 +1127,8 @@ export function App() {
                 ...p,
                 search: { ...p.search, ...patch },
               } : p))}
-              onStartSearch={() => startPaneSearch(pane.id).catch(console.error)}
+              onStartSearch={() => startPaneSearch(pane.id, 'standard').catch(console.error)}
+              onStartEmptyDirSearch={() => startPaneSearch(pane.id, 'empty_dirs').catch(console.error)}
               onCancelSearch={() => cancelPaneSearch(pane.id).catch(console.error)}
               onToggleSelect={(path) => setPanes((prev) => prev.map((p) => {
                 if (p.id !== pane.id) return p;
@@ -1131,7 +1144,7 @@ export function App() {
               onDropTarget={(targetPath, sources, move, sourcePaneId) =>
                 handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
               onClose={() => closePane(pane.id)}
-              interactionsDisabled={pane.lockedOperation === 'size_calc'}
+              interactionsDisabled={pane.search.running || pane.sizeCalc.running}
               onCancelSizeCalculation={() => cancelPaneSize(pane.id).catch(console.error)}
               onDismissSizeResult={() => clearPaneSizeRuntime(pane.id)}
               formatSize={formatSize}

@@ -15,6 +15,7 @@ type Props = {
   onSetMode: (mode: PaneMode) => void | Promise<void>;
   onSearchChange: (patch: Partial<PaneSearchState>) => void;
   onStartSearch: () => void;
+  onStartEmptyDirSearch: () => void;
   onCancelSearch: () => void;
   onToggleSelect: (path: string) => void;
   onFileClick: (path: string) => void;
@@ -46,6 +47,7 @@ export function Pane({
   onSetMode,
   onSearchChange,
   onStartSearch,
+  onStartEmptyDirSearch,
   onCancelSearch,
   onToggleSelect,
   onFileClick,
@@ -66,6 +68,7 @@ export function Pane({
 }: Props) {
   const hasSelection = pane.selected.size > 0;
   const hasSizeOverlay = pane.sizeCalc.running || !!pane.sizeCalc.doneStatus || !!pane.sizeCalc.error;
+  const hasSearchOverlay = pane.search.running;
   const [pathDraft, setPathDraft] = useState(pane.currentPath);
   const canTransfer = !!selectedTargetPaneId;
 
@@ -74,7 +77,7 @@ export function Pane({
   }, [pane.currentPath]);
 
   return (
-    <section className={`pane ${isActive ? 'active' : ''} ${interactionsDisabled || hasSizeOverlay ? 'pane-locked' : ''}`} onClick={onActivate}>
+    <section className={`pane ${isActive ? 'active' : ''} ${interactionsDisabled || hasSizeOverlay || hasSearchOverlay ? 'pane-locked' : ''}`} onClick={onActivate}>
       <div className="pane-toolbar">
         <div className="pane-toolbar-main">
           <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane" disabled={interactionsDisabled}>X</button>
@@ -169,6 +172,21 @@ export function Pane({
               <button className="danger-btn" onClick={onCancelSearch} disabled={interactionsDisabled}>Stop search</button>
             )}
           </div>
+          <details className="search-advanced">
+            <summary>Advanced</summary>
+            <div className="search-advanced-body">
+              <button
+                className="ghost-btn"
+                onClick={onStartEmptyDirSearch}
+                disabled={!pane.currentPath || interactionsDisabled || pane.search.running}
+              >
+                Find empty directories
+              </button>
+              <div className="search-advanced-note">
+                Runs a dedicated empty-directory scan and ignores filename and min-size filters.
+              </div>
+            </div>
+          </details>
           {(pane.search.running || pane.search.currentDir) && (
             <div className="search-progress">
               {pane.search.running && (
@@ -238,6 +256,31 @@ export function Pane({
               ) : (
                 <button onClick={onDismissSizeResult}>Close</button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {hasSearchOverlay && (
+        <div className="pane-operation-overlay" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <div className="pane-operation-card">
+            <h4>{pane.search.mode === 'empty_dirs' ? 'Finding empty directories' : 'Searching'}</h4>
+            <p>
+              Current directory:
+              {' '}
+              {pane.search.currentDir ?? pane.currentPath}
+            </p>
+            <p>
+              Scanned directories:
+              {' '}
+              {pane.search.scannedDirs}
+              {' '}
+              | Matches:
+              {' '}
+              {pane.search.matchedCount}
+            </p>
+            {pane.search.error && <div className="pane-error">{pane.search.error}</div>}
+            <div className="dialog-actions">
+              <button className="danger-btn" onClick={onCancelSearch}>Cancel</button>
             </div>
           </div>
         </div>
