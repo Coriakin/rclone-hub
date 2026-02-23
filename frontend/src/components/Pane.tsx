@@ -21,13 +21,10 @@ type Props = {
   onFileClick: (path: string) => void;
   onContextAction: (entry: Entry, x: number, y: number) => void;
   highlighted: Set<string>;
-  targetOptions: Array<{ id: string; path: string }>;
-  selectedTargetPaneId: string;
-  onSelectTargetPane: (paneId: string) => void;
-  onCopySelected: (targetPaneId: string) => void;
-  onMoveSelected: (targetPaneId: string) => void;
-  onDeleteSelected: () => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
+  onRegisterDragPayload: (sources: string[], sourcePaneId: string) => void;
+  getRegisteredDragPayload: () => { sources: string[]; sourcePaneId?: string } | null;
+  onClearRegisteredDragPayload: () => void;
   onClose: () => void;
   interactionsDisabled?: boolean;
   onCancelSizeCalculation: () => void;
@@ -53,31 +50,41 @@ export function Pane({
   onFileClick,
   onContextAction,
   highlighted,
-  targetOptions,
-  selectedTargetPaneId,
-  onSelectTargetPane,
-  onCopySelected,
-  onMoveSelected,
-  onDeleteSelected,
   onDropTarget,
+  onRegisterDragPayload,
+  getRegisteredDragPayload,
+  onClearRegisteredDragPayload,
   onClose,
   interactionsDisabled = false,
   onCancelSizeCalculation,
   onDismissSizeResult,
   formatSize,
 }: Props) {
-  const hasSelection = pane.selected.size > 0;
   const hasSizeOverlay = pane.sizeCalc.running || !!pane.sizeCalc.doneStatus || !!pane.sizeCalc.error;
   const hasSearchOverlay = pane.search.running;
   const [pathDraft, setPathDraft] = useState(pane.currentPath);
-  const canTransfer = !!selectedTargetPaneId;
 
   useEffect(() => {
     setPathDraft(pane.currentPath);
   }, [pane.currentPath]);
 
   return (
-    <section className={`pane ${isActive ? 'active' : ''} ${interactionsDisabled || hasSizeOverlay || hasSearchOverlay ? 'pane-locked' : ''}`} onClick={onActivate}>
+    <section
+      className={`pane ${isActive ? 'active' : ''} ${interactionsDisabled || hasSizeOverlay || hasSearchOverlay ? 'pane-locked' : ''}`}
+      onClick={onActivate}
+      onDragOver={(e) => {
+        if (interactionsDisabled) return;
+        e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (interactionsDisabled) return;
+        e.preventDefault();
+        const payload = getRegisteredDragPayload();
+        if (!payload) return;
+        onDropTarget(null, payload.sources, e.altKey, payload.sourcePaneId);
+        onClearRegisteredDragPayload();
+      }}
+    >
       <div className="pane-toolbar">
         <div className="pane-toolbar-main">
           <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane" disabled={interactionsDisabled}>X</button>
@@ -119,27 +126,6 @@ export function Pane({
               Search
             </button>
           </div>
-          {pane.mode === 'select' && hasSelection && (
-            <div className="ops-row">
-              <select
-                className="target-pane-select"
-                value={selectedTargetPaneId}
-                onChange={(e) => onSelectTargetPane(e.target.value)}
-                aria-label="Target pane"
-                disabled={interactionsDisabled}
-              >
-                <option value="">{targetOptions.length ? 'Choose target pane...' : 'No target pane open'}</option>
-                {targetOptions.map((option) => (
-                  <option key={option.id} value={option.id}>{option.path}</option>
-                ))}
-              </select>
-              <div className="ops-group" role="group" aria-label="Selection operations">
-                <button disabled={!canTransfer || interactionsDisabled} onClick={() => onCopySelected(selectedTargetPaneId)}>Copy</button>
-                <button disabled={!canTransfer || interactionsDisabled} onClick={() => onMoveSelected(selectedTargetPaneId)}>Move</button>
-              </div>
-              <button className="danger-btn" onClick={onDeleteSelected} disabled={interactionsDisabled}>Delete</button>
-            </div>
-          )}
         </div>
       </div>
       {pane.mode === 'search' && (
@@ -221,6 +207,9 @@ export function Pane({
         onNavigate={onNavigate}
         onContextAction={onContextAction}
         onDropTarget={onDropTarget}
+        onRegisterDragPayload={onRegisterDragPayload}
+        getRegisteredDragPayload={getRegisteredDragPayload}
+        onClearRegisteredDragPayload={onClearRegisteredDragPayload}
       />
       {hasSizeOverlay && (
         <div className="pane-operation-overlay" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>

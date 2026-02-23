@@ -296,8 +296,7 @@ select {
   gap: 8px;
 }
 
-.mode-group,
-.ops-group {
+.mode-group {
   display: inline-flex;
   gap: 0;
   border: 1px solid var(--separator);
@@ -306,8 +305,7 @@ select {
   background: #f4f6f9;
 }
 
-.mode-group button,
-.ops-group button {
+.mode-group button {
   border-radius: 0;
   box-shadow: none;
   border: 0;
@@ -316,8 +314,7 @@ select {
   background: transparent;
 }
 
-.mode-group button:last-child,
-.ops-group button:last-child {
+.mode-group button:last-child {
   border-right: 0;
 }
 
@@ -330,21 +327,6 @@ select {
   color: var(--text-primary);
   background: linear-gradient(180deg, #ffffff, #edf1f7);
   box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.06);
-}
-
-.ops-row {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  margin-left: auto;
-  gap: 6px;
-}
-
-.target-pane-select {
-  min-width: 200px;
-  max-width: 330px;
-  width: min(330px, 100%);
 }
 
 .close-icon-btn,
@@ -482,6 +464,10 @@ select {
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 248, 252, 0.9));
 }
 
+.file-list.selection-mode {
+  padding: 4px;
+}
+
 .file-header {
   display: flex;
   gap: 8px;
@@ -561,6 +547,12 @@ select {
   transition: background 0.16s ease, border-color 0.16s ease;
 }
 
+.file-list.selection-mode .file-row {
+  gap: 4px;
+  padding: 1px 4px;
+  border-radius: 6px;
+}
+
 .file-row:hover {
   background: #ecf1f8;
   border-color: rgba(26, 35, 48, 0.14);
@@ -579,6 +571,12 @@ select {
 .file-checkbox {
   width: 16px;
   height: 16px;
+  margin: 0;
+}
+
+.file-list.selection-mode .file-checkbox {
+  width: 14px;
+  height: 14px;
 }
 
 .entry-btn {
@@ -595,12 +593,26 @@ select {
   grid-template-columns: auto minmax(0, 1fr) minmax(110px, 1fr) 52px 84px 146px;
 }
 
+.file-list.selection-mode .entry-btn {
+  gap: 8px;
+}
+
 .entry-icon {
   width: 20px;
   height: 18px;
   border-radius: 4px;
   display: inline-block;
   position: relative;
+}
+
+.file-list.selection-mode .entry-icon {
+  width: 16px;
+  height: 14px;
+}
+
+.file-list.selection-mode .entry-icon.dir::before {
+  width: 8px;
+  height: 3px;
 }
 
 .entry-icon.dir {
@@ -1100,8 +1112,7 @@ select {
     var(--surface-muted);
 }
 
-:root[data-theme='dark'] .mode-group,
-:root[data-theme='dark'] .ops-group {
+:root[data-theme='dark'] .mode-group {
   background: #232d3b;
 }
 
@@ -1306,17 +1317,6 @@ select {
   .pane-toolbar-modes {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .ops-row {
-    margin-left: 0;
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .target-pane-select {
-    max-width: none;
-    width: 100%;
   }
 
   .entry-btn,
