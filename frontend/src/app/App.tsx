@@ -75,11 +75,13 @@ export function App() {
     targetPaneId: string | null;
     targetPath: string | null;
     sources: string[];
+    sourcePaneId: string | null;
   }>({
     open: false,
     targetPaneId: null,
     targetPath: null,
     sources: [],
+    sourcePaneId: null,
   });
   const [settings, setSettings] = useState<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' } | null>(null);
   const [imagePreview, setImagePreview] = useState<{ open: boolean; remotePath: string; fileName: string; paneId: string | null }>({
@@ -90,7 +92,6 @@ export function App() {
   });
   const [imagePreviewLoading, setImagePreviewLoading] = useState<boolean>(false);
   const [imagePreviewError, setImagePreviewError] = useState<string | null>(null);
-  const [targetPaneBySourcePane, setTargetPaneBySourcePane] = useState<Record<string, string>>({});
   const [highlightedByPane, setHighlightedByPane] = useState<Record<string, string[]>>({});
   const [contextMenu, setContextMenu] = useState<{ open: boolean; paneId: string | null; entry: Entry | null; x: number; y: number }>({
     open: false,
@@ -118,6 +119,7 @@ export function App() {
   const pendingTransferTargetsRef = useRef<Record<string, { targetPaneId: string }>>({});
   const processedTransferJobsRef = useRef<Set<string>>(new Set());
   const highlightTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const dragPayloadRef = useRef<{ sources: string[]; sourcePaneId?: string } | null>(null);
   const panesRef = useRef<PaneState[]>(panes);
   const hasActiveTransfers = useMemo(
     () => jobs.some((job) => job.status === 'queued' || job.status === 'running'),
@@ -736,22 +738,6 @@ export function App() {
     await loadPane(path, paneId);
   }
 
-  async function transferSelected(sourcePaneId: string, targetPaneId: string, move: boolean) {
-    const sourcePane = panes.find((p) => p.id === sourcePaneId);
-    if (!sourcePane || sourcePane.lockedOperation) return;
-    const targetPane = panes.find((p) => p.id === targetPaneId);
-    if (!targetPane?.currentPath) return;
-
-    const sources = Array.from(sourcePane.selected);
-    if (!sources.length) return;
-
-    const job = move
-      ? await api.move(sources, targetPane.currentPath)
-      : await api.copy(sources, targetPane.currentPath);
-    pendingTransferTargetsRef.current[job.id] = { targetPaneId };
-    await refreshJobs();
-  }
-
   function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], _move: boolean, dragSourcePaneId?: string) {
     const pane = panes.find((p) => p.id === targetPaneId);
     if (!pane || pane.lockedOperation) return;
@@ -767,7 +753,7 @@ export function App() {
       return;
     }
 
-    setConfirmDrop({ open: true, targetPaneId, targetPath, sources });
+    setConfirmDrop({ open: true, targetPaneId, targetPath, sources, sourcePaneId: dragSourcePaneId ?? null });
   }
 
   async function executeDrop(move: boolean) {
@@ -779,8 +765,12 @@ export function App() {
 
     const job = move ? await api.move(confirmDrop.sources, dest) : await api.copy(confirmDrop.sources, dest);
     const targetPaneId = confirmDrop.targetPaneId;
+    const sourcePaneId = confirmDrop.sourcePaneId;
     pendingTransferTargetsRef.current[job.id] = { targetPaneId };
-    setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [] });
+    setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [], sourcePaneId: null });
+    if (sourcePaneId) {
+      setPanes((prev) => prev.map((p) => p.id === sourcePaneId ? { ...p, selected: new Set<string>() } : p));
+    }
     await refreshJobs();
   }
 
@@ -981,7 +971,10 @@ export function App() {
     }
     if (action === 'delete') {
       const pane = getPane(paneId);
-      const useSelection = !!pane && pane.mode === 'select' && pane.selected.size > 0;
+      const useSelection = !!pane
+        && pane.mode === 'select'
+        && pane.selected.size > 0
+        && pane.selected.has(entry.path);
       const sources = useSelection ? Array.from(pane!.selected) : [entry.path];
       setConfirmDelete({ open: true, paneId, sources });
     }
@@ -1071,19 +1064,6 @@ export function App() {
               pane={pane}
               isActive={pane.id === activePaneId}
               highlighted={new Set(highlightedByPane[pane.id] ?? [])}
-              targetOptions={panes
-                .filter((p) => p.id !== pane.id && !!p.currentPath)
-                .map((p) => ({ id: p.id, path: p.currentPath }))}
-              selectedTargetPaneId={(() => {
-                const options = panes
-                  .filter((p) => p.id !== pane.id && !!p.currentPath)
-                  .map((p) => p.id);
-                const selected = targetPaneBySourcePane[pane.id];
-                if (selected && options.includes(selected)) return selected;
-                if (options.length === 1) return options[0];
-                return '';
-              })()}
-              onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
               onActivate={() => setActivePaneId(pane.id)}
               onPathSubmit={(path) => navigatePane(pane.id, path).catch(console.error)}
               onRefresh={async () => {
@@ -1138,11 +1118,15 @@ export function App() {
               }))}
               onFileClick={(path) => handleFileClick(pane.id, path)}
               onContextAction={(entry, x, y) => openContextMenu(pane.id, entry, x, y)}
-              onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
-              onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
-              onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id, sources: Array.from(pane.selected) })}
               onDropTarget={(targetPath, sources, move, sourcePaneId) =>
                 handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
+              onRegisterDragPayload={(sources, sourcePaneId) => {
+                dragPayloadRef.current = { sources, sourcePaneId };
+              }}
+              getRegisteredDragPayload={() => dragPayloadRef.current}
+              onClearRegisteredDragPayload={() => {
+                dragPayloadRef.current = null;
+              }}
               onClose={() => closePane(pane.id)}
               interactionsDisabled={pane.search.running || pane.sizeCalc.running}
               onCancelSizeCalculation={() => cancelPaneSize(pane.id).catch(console.error)}
@@ -1284,7 +1268,7 @@ export function App() {
               {(confirmDrop.targetPath ?? panes.find((p) => p.id === confirmDrop.targetPaneId)?.currentPath) || 'unknown'}
             </p>
             <div className="dialog-actions">
-              <button onClick={() => setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [] })}>
+              <button onClick={() => setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [], sourcePaneId: null })}>
                 Cancel
               </button>
               <button onClick={() => executeDrop(false).catch(console.error)}>Copy</button>

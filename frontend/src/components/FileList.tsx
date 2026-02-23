@@ -15,6 +15,9 @@ type Props = {
   onNavigate: (path: string) => void;
   onContextAction: (entry: Entry, x: number, y: number) => void;
   onDropTarget: (targetPath: string | null, sources: string[], move: boolean, sourcePaneId?: string) => void;
+  onRegisterDragPayload: (sources: string[], sourcePaneId: string) => void;
+  getRegisteredDragPayload: () => { sources: string[]; sourcePaneId?: string } | null;
+  onClearRegisteredDragPayload: () => void;
 };
 
 export function FileList({
@@ -31,6 +34,9 @@ export function FileList({
   onNavigate,
   onContextAction,
   onDropTarget,
+  onRegisterDragPayload,
+  getRegisteredDragPayload,
+  onClearRegisteredDragPayload,
 }: Props) {
   const [sortKey, setSortKey] = useState<'size' | 'mod_time' | 'path' | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -139,16 +145,29 @@ export function FileList({
     return formatSize(directorySizes[entry.path]);
   }
 
+  function writeDragPayload(event: React.DragEvent, path: string) {
+    const selectedPaths = selectionMode && selected.has(path)
+      ? Array.from(selected)
+      : [path];
+    onRegisterDragPayload(selectedPaths, paneId);
+    const payload = JSON.stringify({ sources: selectedPaths, sourcePaneId: paneId });
+    event.dataTransfer.setData('application/x-rclone-paths', payload);
+    event.dataTransfer.setData('text/plain', payload);
+    event.dataTransfer.effectAllowed = 'copyMove';
+  }
+
   return (
-    <div className="file-list" onDragOver={(e) => {
+    <div className={`file-list ${selectionMode ? 'selection-mode' : ''}`} onDragOver={(e) => {
       if (interactionsDisabled) return;
       e.preventDefault();
     }} onDrop={(e) => {
       if (interactionsDisabled) return;
       e.preventDefault();
-      const payload = readDropPayload(e);
+      e.stopPropagation();
+      const payload = readDropPayload(e) ?? getRegisteredDragPayload();
       if (!payload) return;
       onDropTarget(null, payload.sources, e.altKey, payload.sourcePaneId);
+      onClearRegisteredDragPayload();
     }}>
       <div className="file-header">
         {selectionMode && <span className="file-header-check" />}
@@ -180,18 +199,19 @@ export function FileList({
               e.preventDefault();
               return;
             }
-            const payload = JSON.stringify({ sources: [entry.path], sourcePaneId: paneId });
-            e.dataTransfer.setData('application/x-rclone-paths', payload);
-            e.dataTransfer.setData('text/plain', payload);
-            e.dataTransfer.effectAllowed = 'copyMove';
+            writeDragPayload(e, entry.path);
+          }}
+          onDragEnd={() => {
+            onClearRegisteredDragPayload();
           }}
           onDrop={(e) => {
             if (interactionsDisabled) return;
             e.preventDefault();
             e.stopPropagation();
-            const payload = readDropPayload(e);
+            const payload = readDropPayload(e) ?? getRegisteredDragPayload();
             if (!payload) return;
             onDropTarget(entry.is_dir ? entry.path : null, payload.sources, e.altKey, payload.sourcePaneId);
+            onClearRegisteredDragPayload();
           }}
           onDragOver={(e) => {
             if (interactionsDisabled) return;
@@ -215,7 +235,18 @@ export function FileList({
           )}
           <button
             className={`entry-btn ${showPathColumn ? 'with-path' : ''}`}
+            draggable
             disabled={interactionsDisabled}
+            onDragStart={(e) => {
+              if (interactionsDisabled) {
+                e.preventDefault();
+                return;
+              }
+              writeDragPayload(e, entry.path);
+            }}
+            onDragEnd={() => {
+              onClearRegisteredDragPayload();
+            }}
             onClick={() => (entry.is_dir ? onNavigate(entry.path) : onFileClick(entry.path))}
           >
             <span className={`entry-icon ${entry.is_dir ? 'dir' : 'file'}`} aria-hidden="true" />
