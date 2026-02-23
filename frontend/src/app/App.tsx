@@ -3,6 +3,7 @@ import { api, type Entry, type Job, type SearchEvent, type SizeEvent } from '../
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DiagnosticsPanel, type DiagnosticsLog } from '../components/DiagnosticsPanel';
 import { Pane } from '../components/Pane';
+import { RemoteConfigPanel } from '../components/RemoteConfigPanel';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TransferQueuePanel } from '../components/TransferQueuePanel';
 import type { PaneState } from '../state/types';
@@ -10,6 +11,7 @@ import type { PaneState } from '../state/types';
 let paneCounter = 0;
 const APPEARANCE_KEY = 'rcloneHub.appearance';
 type Appearance = 'light' | 'dark';
+type AppMode = 'navigation' | 'configuration';
 const PREVIEWABLE_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif']);
 
 function newPane(path = ''): PaneState {
@@ -58,6 +60,7 @@ export function App() {
       return 'dark';
     }
   });
+  const [appMode, setAppMode] = useState<AppMode>('navigation');
   const [openTabs, setOpenTabs] = useState<{ queue: boolean; settings: boolean; diagnostics: boolean }>({
     queue: false,
     settings: false,
@@ -1039,138 +1042,152 @@ export function App() {
       <header className="topbar">
         <div className="topbar-title">
           <h1>rclone hub</h1>
+          <div className="mode-group app-mode-tabs">
+            <button className={appMode === 'navigation' ? 'active' : ''} onClick={() => setAppMode('navigation')}>Navigation</button>
+            <button className={appMode === 'configuration' ? 'active' : ''} onClick={() => setAppMode('configuration')}>Configuration</button>
+          </div>
         </div>
         <div className="topbar-controls">
-          <button className="primary-btn" onClick={addPane}>Add pane</button>
-          <div className="remotes">
-            {remotes.map((remote) => (
-              <button key={remote} className="remote-btn" onClick={() => openRemoteInActivePane(remote)}>
-                {remote}
-              </button>
-            ))}
-          </div>
+          {appMode === 'navigation' && (
+            <>
+              <button className="primary-btn" onClick={addPane}>Add pane</button>
+              <div className="remotes">
+                {remotes.map((remote) => (
+                  <button key={remote} className="remote-btn" onClick={() => openRemoteInActivePane(remote)}>
+                    {remote}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
-      <main className="main-grid">
-        <section className={`panes-row ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'with-drawer' : ''}`}>
-          {panes.map((pane) => (
-            <Pane
-              key={pane.id}
-              pane={pane}
-              isActive={pane.id === activePaneId}
-              highlighted={new Set(highlightedByPane[pane.id] ?? [])}
-              targetOptions={panes
-                .filter((p) => p.id !== pane.id && !!p.currentPath)
-                .map((p) => ({ id: p.id, path: p.currentPath }))}
-              selectedTargetPaneId={(() => {
-                const options = panes
+      {appMode === 'navigation' ? (
+        <main className="main-grid">
+          <section className={`panes-row ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'with-drawer' : ''}`}>
+            {panes.map((pane) => (
+              <Pane
+                key={pane.id}
+                pane={pane}
+                isActive={pane.id === activePaneId}
+                highlighted={new Set(highlightedByPane[pane.id] ?? [])}
+                targetOptions={panes
                   .filter((p) => p.id !== pane.id && !!p.currentPath)
-                  .map((p) => p.id);
-                const selected = targetPaneBySourcePane[pane.id];
-                if (selected && options.includes(selected)) return selected;
-                if (options.length === 1) return options[0];
-                return '';
-              })()}
-              onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
-              onActivate={() => setActivePaneId(pane.id)}
-              onPathSubmit={(path) => navigatePane(pane.id, path).catch(console.error)}
-              onRefresh={async () => {
-                if (!pane.currentPath) return;
-                await cancelPaneSearch(pane.id);
-                setPaneMode(pane.id, 'browse');
-                await loadPane(pane.currentPath, pane.id);
-              }}
-              onNavigate={(path) => navigatePane(pane.id, path).catch(console.error)}
-              onBack={async () => {
-                if (pane.historyIndex <= 0) return;
-                const idx = pane.historyIndex - 1;
-                const path = pane.history[idx];
-                await cancelPaneSearch(pane.id);
-                setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
-                setPaneMode(pane.id, 'browse');
-                await loadPane(path, pane.id);
-              }}
-              onForward={async () => {
-                if (pane.historyIndex >= pane.history.length - 1) return;
-                const idx = pane.historyIndex + 1;
-                const path = pane.history[idx];
-                await cancelPaneSearch(pane.id);
-                setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
-                setPaneMode(pane.id, 'browse');
-                await loadPane(path, pane.id);
-              }}
-              onSetMode={async (mode) => {
-                const current = getPane(pane.id);
-                if (current?.mode === mode) return;
-                if (mode !== 'search') {
+                  .map((p) => ({ id: p.id, path: p.currentPath }))}
+                selectedTargetPaneId={(() => {
+                  const options = panes
+                    .filter((p) => p.id !== pane.id && !!p.currentPath)
+                    .map((p) => p.id);
+                  const selected = targetPaneBySourcePane[pane.id];
+                  if (selected && options.includes(selected)) return selected;
+                  if (options.length === 1) return options[0];
+                  return '';
+                })()}
+                onSelectTargetPane={(targetId) => setTargetPaneBySourcePane((prev) => ({ ...prev, [pane.id]: targetId }))}
+                onActivate={() => setActivePaneId(pane.id)}
+                onPathSubmit={(path) => navigatePane(pane.id, path).catch(console.error)}
+                onRefresh={async () => {
+                  if (!pane.currentPath) return;
                   await cancelPaneSearch(pane.id);
-                }
-                setPaneMode(pane.id, mode);
-                if (current?.mode === 'search' && current.currentPath && mode !== 'search') {
-                  await loadPane(current.currentPath, pane.id);
-                }
-              }}
-              onSearchChange={(patch) => setPanes((prev) => prev.map((p) => p.id === pane.id ? {
-                ...p,
-                search: { ...p.search, ...patch },
-              } : p))}
-              onStartSearch={() => startPaneSearch(pane.id).catch(console.error)}
-              onCancelSearch={() => cancelPaneSearch(pane.id).catch(console.error)}
-              onToggleSelect={(path) => setPanes((prev) => prev.map((p) => {
-                if (p.id !== pane.id) return p;
-                const next = new Set(p.selected);
-                if (next.has(path)) next.delete(path); else next.add(path);
-                return { ...p, selected: next };
-              }))}
-              onFileClick={(path) => handleFileClick(pane.id, path)}
-              onContextAction={(entry, x, y) => openContextMenu(pane.id, entry, x, y)}
-              onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
-              onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
-              onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id, sources: Array.from(pane.selected) })}
-              onDropTarget={(targetPath, sources, move, sourcePaneId) =>
-                handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
-              onClose={() => closePane(pane.id)}
-              interactionsDisabled={pane.lockedOperation === 'size_calc'}
-              onCancelSizeCalculation={() => cancelPaneSize(pane.id).catch(console.error)}
-              onDismissSizeResult={() => clearPaneSizeRuntime(pane.id)}
-              formatSize={formatSize}
-            />
-          ))}
-        </section>
-        <aside className={`right-drawer ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'open' : ''}`}>
-          <div className="drawer-tabs">
-            <button className={openTabs.queue ? 'active' : ''} onClick={() => toggleRightTab('queue')}>
-              <span>Queue</span>
-            </button>
-            <button className={openTabs.settings ? 'active' : ''} onClick={() => toggleRightTab('settings')}>
-              <span>Settings</span>
-            </button>
-            <button className={openTabs.diagnostics ? 'active' : ''} onClick={() => toggleRightTab('diagnostics')}>
-              <span>Diagnostics</span>
-            </button>
-          </div>
-          {(openTabs.queue || openTabs.settings || openTabs.diagnostics) && (
-            <div className="drawer-content">
-              {openTabs.queue && (
-                <TransferQueuePanel jobs={jobs} onCancel={(id) => api.cancel(id).then(refreshJobs).catch(console.error)} />
-              )}
-              {openTabs.settings && settings && (
-                <SettingsPanel
-                  initial={settings}
-                  appearance={appearance}
-                  onAppearanceChange={setAppearance}
-                  onSave={async (s) => {
-                    await api.saveSettings(s);
-                    await loadSettings();
-                  }}
-                />
-              )}
-              {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} logs={diagnosticsLogs} />}
+                  setPaneMode(pane.id, 'browse');
+                  await loadPane(pane.currentPath, pane.id);
+                }}
+                onNavigate={(path) => navigatePane(pane.id, path).catch(console.error)}
+                onBack={async () => {
+                  if (pane.historyIndex <= 0) return;
+                  const idx = pane.historyIndex - 1;
+                  const path = pane.history[idx];
+                  await cancelPaneSearch(pane.id);
+                  setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
+                  setPaneMode(pane.id, 'browse');
+                  await loadPane(path, pane.id);
+                }}
+                onForward={async () => {
+                  if (pane.historyIndex >= pane.history.length - 1) return;
+                  const idx = pane.historyIndex + 1;
+                  const path = pane.history[idx];
+                  await cancelPaneSearch(pane.id);
+                  setPanes((prev) => prev.map((p) => p.id === pane.id ? { ...p, historyIndex: idx } : p));
+                  setPaneMode(pane.id, 'browse');
+                  await loadPane(path, pane.id);
+                }}
+                onSetMode={async (mode) => {
+                  const current = getPane(pane.id);
+                  if (current?.mode === mode) return;
+                  if (mode !== 'search') {
+                    await cancelPaneSearch(pane.id);
+                  }
+                  setPaneMode(pane.id, mode);
+                  if (current?.mode === 'search' && current.currentPath && mode !== 'search') {
+                    await loadPane(current.currentPath, pane.id);
+                  }
+                }}
+                onSearchChange={(patch) => setPanes((prev) => prev.map((p) => p.id === pane.id ? {
+                  ...p,
+                  search: { ...p.search, ...patch },
+                } : p))}
+                onStartSearch={() => startPaneSearch(pane.id).catch(console.error)}
+                onCancelSearch={() => cancelPaneSearch(pane.id).catch(console.error)}
+                onToggleSelect={(path) => setPanes((prev) => prev.map((p) => {
+                  if (p.id !== pane.id) return p;
+                  const next = new Set(p.selected);
+                  if (next.has(path)) next.delete(path); else next.add(path);
+                  return { ...p, selected: next };
+                }))}
+                onFileClick={(path) => handleFileClick(pane.id, path)}
+                onContextAction={(entry, x, y) => openContextMenu(pane.id, entry, x, y)}
+                onCopySelected={(targetId) => transferSelected(pane.id, targetId, false).catch(console.error)}
+                onMoveSelected={(targetId) => transferSelected(pane.id, targetId, true).catch(console.error)}
+                onDeleteSelected={() => setConfirmDelete({ open: true, paneId: pane.id, sources: Array.from(pane.selected) })}
+                onDropTarget={(targetPath, sources, move, sourcePaneId) =>
+                  handleDrop(pane.id, targetPath, sources, move, sourcePaneId)}
+                onClose={() => closePane(pane.id)}
+                interactionsDisabled={pane.lockedOperation === 'size_calc'}
+                onCancelSizeCalculation={() => cancelPaneSize(pane.id).catch(console.error)}
+                onDismissSizeResult={() => clearPaneSizeRuntime(pane.id)}
+                formatSize={formatSize}
+              />
+            ))}
+          </section>
+          <aside className={`right-drawer ${openTabs.queue || openTabs.settings || openTabs.diagnostics ? 'open' : ''}`}>
+            <div className="drawer-tabs">
+              <button className={openTabs.queue ? 'active' : ''} onClick={() => toggleRightTab('queue')}>
+                <span>Queue</span>
+              </button>
+              <button className={openTabs.settings ? 'active' : ''} onClick={() => toggleRightTab('settings')}>
+                <span>Settings</span>
+              </button>
+              <button className={openTabs.diagnostics ? 'active' : ''} onClick={() => toggleRightTab('diagnostics')}>
+                <span>Diagnostics</span>
+              </button>
             </div>
-          )}
-        </aside>
-      </main>
+            {(openTabs.queue || openTabs.settings || openTabs.diagnostics) && (
+              <div className="drawer-content">
+                {openTabs.queue && (
+                  <TransferQueuePanel jobs={jobs} onCancel={(id) => api.cancel(id).then(refreshJobs).catch(console.error)} />
+                )}
+                {openTabs.settings && settings && (
+                  <SettingsPanel
+                    initial={settings}
+                    appearance={appearance}
+                    onAppearanceChange={setAppearance}
+                    onSave={async (s) => {
+                      await api.saveSettings(s);
+                      await loadSettings();
+                    }}
+                  />
+                )}
+                {openTabs.diagnostics && <DiagnosticsPanel jobs={jobs} logs={diagnosticsLogs} />}
+              </div>
+            )}
+          </aside>
+        </main>
+      ) : (
+        <main className="config-main">
+          <RemoteConfigPanel onRemotesChanged={refreshRemotes} />
+        </main>
+      )}
 
       {contextMenu.open && contextMenu.entry && (
         <div

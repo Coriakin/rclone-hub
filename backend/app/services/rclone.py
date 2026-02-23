@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import threading
 import time
-from typing import BinaryIO, Callable, Iterator
+from typing import Any, BinaryIO, Callable, Iterator
 
 from app.models.schemas import Entry
 
@@ -230,6 +230,89 @@ class RcloneClient:
     def list_remotes(self) -> list[str]:
         result = self.run_checked(["listremotes"])
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    def list_remotes_long_json(self) -> list[dict[str, Any]]:
+        result = self.run_checked(["listremotes", "--json"])
+        payload = json.loads(result.stdout or "[]")
+        if not isinstance(payload, list):
+            raise RcloneError("invalid response from rclone listremotes --json")
+        return payload
+
+    def config_providers(self) -> list[dict[str, Any]]:
+        result = self.run_checked(["config", "providers"])
+        payload = json.loads(result.stdout or "[]")
+        if not isinstance(payload, list):
+            raise RcloneError("invalid response from rclone config providers")
+        return payload
+
+    def config_dump(self) -> dict[str, dict[str, Any]]:
+        result = self.run_checked(["config", "dump"])
+        payload = json.loads(result.stdout or "{}")
+        if not isinstance(payload, dict):
+            raise RcloneError("invalid response from rclone config dump")
+        return payload
+
+    def config_redacted(self, remote: str | None = None) -> dict[str, str] | dict[str, dict[str, str]]:
+        args = ["config", "redacted"]
+        if remote:
+            args.append(remote)
+        result = self.run_checked(args)
+        parsed = self._parse_ini_like_config(result.stdout or "")
+        if remote is not None:
+            return parsed.get(remote, {})
+        return parsed
+
+    def config_create(self, name: str, remote_type: str, values: dict[str, Any]) -> None:
+        args = ["config", "create", name, remote_type, *self._to_key_value_args(values), "--obscure"]
+        result = self.run(args)
+        if result.returncode != 0:
+            raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+
+    def config_update(self, name: str, values: dict[str, Any]) -> None:
+        args = ["config", "update", name, *self._to_key_value_args(values), "--obscure"]
+        result = self.run(args)
+        if result.returncode != 0:
+            raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+
+    def config_delete(self, name: str) -> None:
+        self.run_checked(["config", "delete", name])
+
+    def config_create_non_interactive(
+        self,
+        name: str,
+        remote_type: str,
+        values: dict[str, Any],
+        state: str | None = None,
+        result_value: str | None = None,
+        ask_all: bool = False,
+    ) -> dict[str, Any] | None:
+        args = ["config", "create", name, remote_type, *self._to_key_value_args(values), "--non-interactive", "--obscure"]
+        if ask_all:
+            args.append("--all")
+        if state is not None:
+            args.extend(["--continue", "--state", state, "--result", result_value or ""])
+        result = self.run(args)
+        if result.returncode != 0:
+            raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+        return self._parse_config_question(result.stdout)
+
+    def config_update_non_interactive(
+        self,
+        name: str,
+        values: dict[str, Any],
+        state: str | None = None,
+        result_value: str | None = None,
+        ask_all: bool = False,
+    ) -> dict[str, Any] | None:
+        args = ["config", "update", name, *self._to_key_value_args(values), "--non-interactive", "--obscure"]
+        if ask_all:
+            args.append("--all")
+        if state is not None:
+            args.extend(["--continue", "--state", state, "--result", result_value or ""])
+        result = self.run(args)
+        if result.returncode != 0:
+            raise RcloneError(f"command failed: {self._as_cmd(result.args)}\n{result.stderr.strip()}")
+        return self._parse_config_question(result.stdout)
 
     def list(self, remote_path: str, recursive: bool = False) -> list[Entry]:
         args = ["lsjson", remote_path, "--hash", "--metadata", "--files-only=false"]
@@ -466,3 +549,60 @@ class RcloneClient:
             proc.wait()
             raise RcloneError(f"failed to open stdout stream: {self._as_cmd(cmd)}")
         return BinaryStreamHandle(args=cmd, process=proc, stdout=proc.stdout, stderr=proc.stderr)
+
+    @staticmethod
+    def _to_key_value_args(values: dict[str, Any]) -> list[str]:
+        args: list[str] = []
+        for key in sorted(values.keys()):
+            value = values[key]
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                value_str = "true" if value else "false"
+            else:
+                value_str = str(value)
+            args.extend([key, value_str])
+        return args
+
+    @staticmethod
+    def _parse_config_question(stdout: str) -> dict[str, Any] | None:
+        text = stdout.strip()
+        if not text:
+            return None
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        state = str(payload.get("State", ""))
+        option = payload.get("Option")
+        if not state or not isinstance(option, dict):
+            return None
+        error = str(payload.get("Error", ""))
+        return {"state": state, "option": option, "error": error}
+
+    @staticmethod
+    def _parse_ini_like_config(contents: str) -> dict[str, dict[str, str]]:
+        sections: dict[str, dict[str, str]] = {}
+        current: str | None = None
+        for raw_line in contents.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("#") or line.startswith(";"):
+                continue
+            if line.startswith("[") and line.endswith("]") and len(line) >= 3:
+                current = line[1:-1].strip()
+                if current:
+                    sections.setdefault(current, {})
+                else:
+                    current = None
+                continue
+            if current is None:
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            sections[current][key.strip()] = value.strip()
+        return sections
