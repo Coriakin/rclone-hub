@@ -374,6 +374,11 @@ select {
   color: var(--danger);
 }
 
+.pane-loading {
+  display: grid;
+  gap: 5px;
+}
+
 .pane-success {
   padding: 10px;
   font-size: 12px;

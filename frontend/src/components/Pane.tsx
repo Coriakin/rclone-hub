@@ -191,7 +191,15 @@ export function Pane({
           {pane.search.error && <div className="pane-error">{pane.search.error}</div>}
         </div>
       )}
-      {pane.loading && <div className="pane-status">Loading...</div>}
+      {pane.loading && (
+        <div className="pane-status pane-loading" role="status" aria-live="polite">
+          <div className="progressbar indeterminate" aria-hidden="true">
+            <span />
+          </div>
+          <div className="search-progress-text">Opening directory...</div>
+          <div className="search-progress-meta">{pane.currentPath || pathDraft}</div>
+        </div>
+      )}
       {pane.error && <div className="pane-error">{pane.error}</div>}
       <FileList
         paneId={pane.id}
