@@ -261,12 +261,18 @@ select {
   z-index: 0;
   display: grid;
   grid-template-rows: auto auto 1fr;
+  transition: opacity 120ms ease, filter 120ms ease;
 }
 
 .pane.active {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--separator));
   box-shadow: var(--shadow-md), 0 0 0 2px rgba(10, 103, 216, 0.15);
   z-index: 2;
+}
+
+.pane.pane-loading-state {
+  opacity: 0.72;
+  filter: saturate(0.84);
 }
 
 .pane-toolbar {

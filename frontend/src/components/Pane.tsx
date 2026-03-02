@@ -62,6 +62,7 @@ export function Pane({
 }: Props) {
   const hasSizeOverlay = pane.sizeCalc.running || !!pane.sizeCalc.doneStatus || !!pane.sizeCalc.error;
   const hasSearchOverlay = pane.search.running;
+  const uiDisabled = interactionsDisabled || pane.loading;
   const [pathDraft, setPathDraft] = useState(pane.currentPath);
 
   useEffect(() => {
@@ -70,14 +71,17 @@ export function Pane({
 
   return (
     <section
-      className={`pane ${isActive ? 'active' : ''} ${interactionsDisabled || hasSizeOverlay || hasSearchOverlay ? 'pane-locked' : ''}`}
-      onClick={onActivate}
+      className={`pane ${isActive ? 'active' : ''} ${pane.loading ? 'pane-loading-state' : ''} ${uiDisabled || hasSizeOverlay || hasSearchOverlay ? 'pane-locked' : ''}`}
+      onClick={() => {
+        if (uiDisabled) return;
+        onActivate();
+      }}
       onDragOver={(e) => {
-        if (interactionsDisabled) return;
+        if (uiDisabled) return;
         e.preventDefault();
       }}
       onDrop={(e) => {
-        if (interactionsDisabled) return;
+        if (uiDisabled) return;
         e.preventDefault();
         const payload = getRegisteredDragPayload();
         if (!payload) return;
@@ -87,12 +91,12 @@ export function Pane({
     >
       <div className="pane-toolbar">
         <div className="pane-toolbar-main">
-          <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane" disabled={interactionsDisabled}>X</button>
-          <button className="ghost-btn" onClick={onBack} disabled={pane.historyIndex <= 0 || interactionsDisabled}>Back</button>
-          <button className="ghost-btn" onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1 || interactionsDisabled}>Forward</button>
+          <button className="close-icon-btn" onClick={onClose} aria-label="Close pane" title="Close pane" disabled={uiDisabled}>X</button>
+          <button className="ghost-btn" onClick={onBack} disabled={pane.historyIndex <= 0 || uiDisabled}>Back</button>
+          <button className="ghost-btn" onClick={onForward} disabled={pane.historyIndex >= pane.history.length - 1 || uiDisabled}>Forward</button>
           <form onSubmit={(e) => {
             e.preventDefault();
-            if (interactionsDisabled) return;
+            if (uiDisabled) return;
             const nextPath = pathDraft.trim();
             if (!nextPath) return;
             onPathSubmit(nextPath);
@@ -101,13 +105,13 @@ export function Pane({
               name="path"
               value={pathDraft}
               onChange={(e) => setPathDraft(e.target.value)}
-              disabled={interactionsDisabled}
+              disabled={uiDisabled}
             />
           </form>
           <button
             className="refresh-icon-btn"
             onClick={onRefresh}
-            disabled={!pane.currentPath || pane.loading || interactionsDisabled}
+            disabled={!pane.currentPath || uiDisabled}
             aria-label="Refresh pane"
             title="Refresh pane"
           >
@@ -116,13 +120,13 @@ export function Pane({
         </div>
         <div className="pane-toolbar-modes">
           <div className="mode-group" role="group" aria-label="Pane mode">
-            <button className={pane.mode === 'browse' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('browse')} disabled={interactionsDisabled}>
+            <button className={pane.mode === 'browse' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('browse')} disabled={uiDisabled}>
               Browse
             </button>
-            <button className={pane.mode === 'select' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('select')} disabled={interactionsDisabled}>
+            <button className={pane.mode === 'select' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('select')} disabled={uiDisabled}>
               Select
             </button>
-            <button className={pane.mode === 'search' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('search')} disabled={interactionsDisabled}>
+            <button className={pane.mode === 'search' ? 'mode-btn active' : 'mode-btn'} onClick={() => onSetMode('search')} disabled={uiDisabled}>
               Search
             </button>
           </div>
@@ -137,7 +141,7 @@ export function Pane({
                 value={pane.search.filenameQuery}
                 onChange={(e) => onSearchChange({ filenameQuery: e.target.value })}
                 placeholder="*"
-                disabled={interactionsDisabled}
+                disabled={uiDisabled}
               />
             </label>
             <label className="search-field search-size">
@@ -149,13 +153,13 @@ export function Pane({
                 value={pane.search.minSizeMb}
                 onChange={(e) => onSearchChange({ minSizeMb: e.target.value })}
                 placeholder="1"
-                disabled={interactionsDisabled}
+                disabled={uiDisabled}
               />
             </label>
             {!pane.search.running ? (
-              <button className="primary-btn" onClick={onStartSearch} disabled={!pane.currentPath || interactionsDisabled}>Start search</button>
+              <button className="primary-btn" onClick={onStartSearch} disabled={!pane.currentPath || uiDisabled}>Start search</button>
             ) : (
-              <button className="danger-btn" onClick={onCancelSearch} disabled={interactionsDisabled}>Stop search</button>
+              <button className="danger-btn" onClick={onCancelSearch} disabled={uiDisabled}>Stop search</button>
             )}
           </div>
           <details className="search-advanced">
@@ -164,7 +168,7 @@ export function Pane({
               <button
                 className="ghost-btn"
                 onClick={onStartEmptyDirSearch}
-                disabled={!pane.currentPath || interactionsDisabled || pane.search.running}
+                disabled={!pane.currentPath || uiDisabled || pane.search.running}
               >
                 Find empty directories
               </button>
@@ -205,7 +209,7 @@ export function Pane({
         paneId={pane.id}
         entries={pane.items}
         directorySizes={pane.directorySizes}
-        interactionsDisabled={interactionsDisabled}
+        interactionsDisabled={uiDisabled}
         selectionMode={pane.mode === 'select'}
         showPathColumn={pane.mode === 'search'}
         selected={pane.selected}
