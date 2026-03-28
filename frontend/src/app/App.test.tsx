@@ -215,6 +215,12 @@ describe('App selection mode interactions', () => {
     return event;
   }
 
+  function setInputValue(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   beforeEach(async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     mockMatchMedia(true);
@@ -371,7 +377,7 @@ describe('App selection mode interactions', () => {
     expect(singlePayload.sources).toEqual(['src:c.txt']);
   });
 
-  test('cross-pane drop prompts for action and clears source selection after copy', async () => {
+  test('cross-pane background drop prompts for transfer details and clears source selection after copy', async () => {
     const sourcePane = paneAt(0);
     const targetPane = paneAt(1);
     buttonByText(sourcePane, 'Select')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -396,13 +402,99 @@ describe('App selection mode interactions', () => {
     }));
     await flush();
 
-    expect(container.textContent).toContain('Choose transfer action');
-    expect(container.textContent).toContain('2 item(s) dropped.');
-    buttonByText(container, 'Copy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(container.textContent).toContain('Transfer items');
+    expect(container.textContent).toContain('2 item(s) ready to transfer.');
+    expect(container.textContent).toContain('Items:');
+    buttonByText(container, 'Start transfer')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
 
     expect(apiMock.copy).toHaveBeenCalledWith(['src:a.txt', 'src:b.txt'], 'dst:');
     expect(sourcePane.querySelectorAll('.file-row.is-selected').length).toBe(0);
+  });
+
+  test('cross-pane background drop uses new subfolder name in destination path', async () => {
+    const sourcePane = paneAt(0);
+    const targetPane = paneAt(1);
+    buttonByText(sourcePane, 'Select')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aButton = Array.from(sourcePane.querySelectorAll('.entry-btn')).find((btn) => btn.textContent?.includes('a.txt'));
+    aButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aRow = rowByName(sourcePane, 'a.txt');
+    const setData = vi.fn();
+    aRow?.dispatchEvent(createDndEvent('dragstart', { setData, effectAllowed: '' }));
+    const payload = String(setData.mock.calls.find((call) => call[0] === 'application/x-rclone-paths')?.[1] ?? '');
+    targetPane.querySelector('.file-list')?.dispatchEvent(createDndEvent('drop', {
+      getData: (format: string) => (format === 'application/x-rclone-paths' ? payload : ''),
+    }));
+    await flush();
+
+    const input = container.querySelector('.transfer-dialog-field input') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    setInputValue(input!, 'photos');
+    await flush();
+
+    buttonByText(container, 'Start transfer')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    expect(apiMock.copy).toHaveBeenCalledWith(['src:a.txt'], 'dst:photos');
+  });
+
+  test('background drop validates the new subfolder name before dispatching transfer', async () => {
+    const sourcePane = paneAt(0);
+    const targetPane = paneAt(1);
+    buttonByText(sourcePane, 'Select')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aButton = Array.from(sourcePane.querySelectorAll('.entry-btn')).find((btn) => btn.textContent?.includes('a.txt'));
+    aButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aRow = rowByName(sourcePane, 'a.txt');
+    const setData = vi.fn();
+    aRow?.dispatchEvent(createDndEvent('dragstart', { setData, effectAllowed: '' }));
+    const payload = String(setData.mock.calls.find((call) => call[0] === 'application/x-rclone-paths')?.[1] ?? '');
+    targetPane.querySelector('.file-list')?.dispatchEvent(createDndEvent('drop', {
+      getData: (format: string) => (format === 'application/x-rclone-paths' ? payload : ''),
+    }));
+    await flush();
+
+    const input = container.querySelector('.transfer-dialog-field input') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    setInputValue(input!, '   ');
+    await flush();
+
+    buttonByText(container, 'Start transfer')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    expect(container.textContent).toContain('New subfolder name cannot be only whitespace.');
+    expect(apiMock.copy).not.toHaveBeenCalled();
+  });
+
+  test('dropping onto a directory row bypasses the dialog and transfers directly', async () => {
+    const sourcePane = paneAt(0);
+    const targetPane = paneAt(1);
+    buttonByText(sourcePane, 'Select')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aButton = Array.from(sourcePane.querySelectorAll('.entry-btn')).find((btn) => btn.textContent?.includes('a.txt'));
+    aButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const aRow = rowByName(sourcePane, 'a.txt');
+    const incomingRow = rowByName(targetPane, 'incoming');
+    const setData = vi.fn();
+    aRow?.dispatchEvent(createDndEvent('dragstart', { setData, effectAllowed: '' }));
+    const payload = String(setData.mock.calls.find((call) => call[0] === 'application/x-rclone-paths')?.[1] ?? '');
+    incomingRow?.dispatchEvent(createDndEvent('drop', {
+      getData: (format: string) => (format === 'application/x-rclone-paths' ? payload : ''),
+    }));
+    await flush();
+
+    expect(container.textContent).not.toContain('Transfer items');
+    expect(apiMock.copy).toHaveBeenCalledWith(['src:a.txt'], 'dst:incoming');
   });
 });
 

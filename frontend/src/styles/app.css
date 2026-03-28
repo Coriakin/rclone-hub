@@ -1140,6 +1140,24 @@ select {
   font-size: 13px;
 }
 
+.transfer-dialog-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.transfer-dialog-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.transfer-dialog-field input {
+  width: 100%;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

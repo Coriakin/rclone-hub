@@ -13,6 +13,7 @@ const APPEARANCE_KEY = 'rcloneHub.appearance';
 type Appearance = 'light' | 'dark';
 type AppMode = 'navigation' | 'configuration';
 const PREVIEWABLE_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif']);
+type TransferOperation = 'copy' | 'move';
 
 function newPane(path = ''): PaneState {
   paneCounter += 1;
@@ -79,12 +80,17 @@ export function App() {
     targetPath: string | null;
     sources: string[];
     sourcePaneId: string | null;
+    operation: TransferOperation;
+    newSubfolderName: string;
+    error?: string;
   }>({
     open: false,
     targetPaneId: null,
     targetPath: null,
     sources: [],
     sourcePaneId: null,
+    operation: 'copy',
+    newSubfolderName: '',
   });
   const [settings, setSettings] = useState<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' } | null>(null);
   const [imagePreview, setImagePreview] = useState<{ open: boolean; remotePath: string; fileName: string; paneId: string | null }>({
@@ -741,7 +747,7 @@ export function App() {
     await loadPane(path, paneId);
   }
 
-  function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], _move: boolean, dragSourcePaneId?: string) {
+  function handleDrop(targetPaneId: string, targetPath: string | null, sources: string[], move: boolean, dragSourcePaneId?: string) {
     const pane = panes.find((p) => p.id === targetPaneId);
     if (!pane || pane.lockedOperation) return;
 
@@ -756,21 +762,84 @@ export function App() {
       return;
     }
 
-    setConfirmDrop({ open: true, targetPaneId, targetPath, sources, sourcePaneId: dragSourcePaneId ?? null });
+    if (targetPath) {
+      const targetDir = normalizeComparablePath(targetPath);
+      const wouldOverwriteSelf = sources.some((source) => (
+        normalizeComparablePath(joinRemotePath(targetDir, basename(source))) === normalizeComparablePath(source)
+      ));
+      if (wouldOverwriteSelf) {
+        return;
+      }
+      const transfer = move ? api.move : api.copy;
+      transfer(sources, targetPath)
+        .then(async (job) => {
+          pendingTransferTargetsRef.current[job.id] = { targetPaneId };
+          if (dragSourcePaneId) {
+            setPanes((prev) => prev.map((p) => p.id === dragSourcePaneId ? { ...p, selected: new Set<string>() } : p));
+          }
+          await refreshJobs();
+        })
+        .catch(console.error);
+      return;
+    }
+
+    setConfirmDrop({
+      open: true,
+      targetPaneId,
+      targetPath,
+      sources,
+      sourcePaneId: dragSourcePaneId ?? null,
+      operation: move ? 'move' : 'copy',
+      newSubfolderName: '',
+      error: undefined,
+    });
   }
 
-  async function executeDrop(move: boolean) {
+  async function executeDrop() {
     if (!confirmDrop.targetPaneId) return;
     const pane = panes.find((p) => p.id === confirmDrop.targetPaneId);
     if (!pane) return;
-    const dest = confirmDrop.targetPath ?? pane.currentPath;
-    if (!dest || confirmDrop.sources.length === 0) return;
+    const baseDest = confirmDrop.targetPath ?? pane.currentPath;
+    if (!baseDest || confirmDrop.sources.length === 0) return;
 
-    const job = move ? await api.move(confirmDrop.sources, dest) : await api.copy(confirmDrop.sources, dest);
+    const rawNewSubfolderName = confirmDrop.newSubfolderName;
+    const trimmedNewSubfolderName = rawNewSubfolderName.trim();
+    if (rawNewSubfolderName.length > 0) {
+      if (!trimmedNewSubfolderName) {
+        setConfirmDrop((prev) => ({ ...prev, error: 'New subfolder name cannot be only whitespace.' }));
+        return;
+      }
+      if (trimmedNewSubfolderName === '.' || trimmedNewSubfolderName === '..') {
+        setConfirmDrop((prev) => ({ ...prev, error: 'New subfolder name must be a single folder name.' }));
+        return;
+      }
+      if (/[\\/]/.test(trimmedNewSubfolderName)) {
+        setConfirmDrop((prev) => ({ ...prev, error: 'New subfolder name cannot contain path separators.' }));
+        return;
+      }
+      const existing = pane.items.find((item) => item.name === trimmedNewSubfolderName);
+      if (existing && !existing.is_dir) {
+        setConfirmDrop((prev) => ({ ...prev, error: 'A file with that name already exists in the destination.' }));
+        return;
+      }
+    }
+
+    const dest = trimmedNewSubfolderName ? joinRemotePath(baseDest, trimmedNewSubfolderName) : baseDest;
+    const wouldOverwriteSelf = confirmDrop.sources.some((source) => (
+      normalizeComparablePath(joinRemotePath(dest, basename(source))) === normalizeComparablePath(source)
+    ));
+    if (wouldOverwriteSelf) {
+      setConfirmDrop((prev) => ({ ...prev, error: 'Source and destination resolve to the same path.' }));
+      return;
+    }
+
+    const job = confirmDrop.operation === 'move'
+      ? await api.move(confirmDrop.sources, dest)
+      : await api.copy(confirmDrop.sources, dest);
     const targetPaneId = confirmDrop.targetPaneId;
     const sourcePaneId = confirmDrop.sourcePaneId;
     pendingTransferTargetsRef.current[job.id] = { targetPaneId };
-    setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [], sourcePaneId: null });
+    resetConfirmDrop();
     if (sourcePaneId) {
       setPanes((prev) => prev.map((p) => p.id === sourcePaneId ? { ...p, selected: new Set<string>() } : p));
     }
@@ -836,6 +905,41 @@ export function App() {
     if (!normalized) return path;
     const segments = normalized.split('/');
     return segments.length ? segments[segments.length - 1] : path;
+  }
+
+  function joinRemotePath(base: string, child: string): string {
+    if (!base.includes(':')) {
+      const normalizedBase = base.replace(/\/+$/g, '');
+      const normalizedChild = child.replace(/^\/+/g, '');
+      return normalizedBase ? `${normalizedBase}/${normalizedChild}` : normalizedChild;
+    }
+    const [remote, rel] = base.split(':', 2);
+    const normalizedBase = rel.replace(/^\/+|\/+$/g, '');
+    const normalizedChild = child.replace(/^\/+|\/+$/g, '');
+    if (!normalizedBase) return `${remote}:${normalizedChild}`;
+    return `${remote}:${normalizedBase}/${normalizedChild}`;
+  }
+
+  function normalizeComparablePath(path: string): string {
+    if (!path.includes(':')) {
+      return path.replace(/\/+/g, '/').replace(/\/$/g, '');
+    }
+    const [remote, rel] = path.split(':', 2);
+    const normalizedRel = rel.replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '');
+    return normalizedRel ? `${remote}:${normalizedRel}` : `${remote}:`;
+  }
+
+  function resetConfirmDrop() {
+    setConfirmDrop({
+      open: false,
+      targetPaneId: null,
+      targetPath: null,
+      sources: [],
+      sourcePaneId: null,
+      operation: 'copy',
+      newSubfolderName: '',
+      error: undefined,
+    });
   }
 
   function isPreviewableImage(path: string): boolean {
@@ -1276,20 +1380,56 @@ export function App() {
       {confirmDrop.open && (
         <div className="dialog-backdrop">
           <div className="dialog">
-            <h3>Choose transfer action</h3>
+            <h3>Transfer items</h3>
             <p>
-              {confirmDrop.sources.length} item(s) dropped.
-              {' '}
+              {confirmDrop.sources.length} item(s) ready to transfer.
+            </p>
+            <p>
               Destination:
               {' '}
               {(confirmDrop.targetPath ?? panes.find((p) => p.id === confirmDrop.targetPaneId)?.currentPath) || 'unknown'}
             </p>
+            <p>
+              Items:
+              {' '}
+              {confirmDrop.sources.slice(0, 3).map((source) => basename(source)).join(', ')}
+              {confirmDrop.sources.length > 3 ? ` +${confirmDrop.sources.length - 3} more` : ''}
+            </p>
+            <div className="transfer-dialog-controls" role="group" aria-label="Transfer operation">
+              <button
+                className={confirmDrop.operation === 'copy' ? 'primary-btn' : 'ghost-btn'}
+                onClick={() => setConfirmDrop((prev) => ({ ...prev, operation: 'copy' }))}
+              >
+                Copy
+              </button>
+              <button
+                className={confirmDrop.operation === 'move' ? 'primary-btn' : 'ghost-btn'}
+                onClick={() => setConfirmDrop((prev) => ({ ...prev, operation: 'move' }))}
+              >
+                Move
+              </button>
+            </div>
+            <label className="transfer-dialog-field">
+              <span>New subfolder</span>
+              <input
+                value={confirmDrop.newSubfolderName}
+                onChange={(e) => setConfirmDrop((prev) => ({
+                  ...prev,
+                  newSubfolderName: e.target.value,
+                  error: undefined,
+                }))}
+                placeholder="Optional"
+                autoFocus
+              />
+            </label>
+            {confirmDrop.error && <div className="pane-error">{confirmDrop.error}</div>}
             <div className="dialog-actions">
-              <button onClick={() => setConfirmDrop({ open: false, targetPaneId: null, targetPath: null, sources: [], sourcePaneId: null })}>
+              <button onClick={resetConfirmDrop}>
                 Cancel
               </button>
-              <button onClick={() => executeDrop(false).catch(console.error)}>Copy</button>
-              <button onClick={() => executeDrop(true).catch(console.error)}>Move</button>
+              <button className="primary-btn" onClick={() => executeDrop().catch(console.error)}>
+                Start transfer
+              </button>
             </div>
           </div>
         </div>
