@@ -1,258 +1,57 @@
-export type Entry = {
-  name: string;
-  path: string;
-  parent_path?: string;
-  is_dir: boolean;
-  size: number;
-  mod_time?: string;
-};
-
-export type Job = {
-  id: string;
-  operation: 'copy' | 'move' | 'delete';
-  status: 'queued' | 'running' | 'success' | 'failed' | 'cancelled' | 'interrupted';
-  sources: string[];
-  destination_dir?: string;
-  created_at: string;
-  results: Array<{
-    source: string;
-    destination?: string;
-    status: string;
-    fallback_used: boolean;
-    error?: string;
-  }>;
-  logs: Array<{
-    ts: string;
-    level: string;
-    message: string;
-  }>;
-};
-
-export type SearchProgressEvent = {
-  seq: number;
-  type: 'progress';
-  current_dir: string;
-  scanned_dirs: number;
-  matched_count: number;
-};
-
-export type SearchResultEvent = {
-  seq: number;
-  type: 'result';
-  entry: Entry;
-};
-
-export type SearchDoneEvent = {
-  seq: number;
-  type: 'done';
-  status: 'success' | 'cancelled' | 'failed';
-  scanned_dirs: number;
-  matched_count: number;
-  error?: string;
-};
-
-export type SearchEvent = SearchProgressEvent | SearchResultEvent | SearchDoneEvent;
-
-export type SizeProgressEvent = {
-  seq: number;
-  type: 'progress';
-  current_dir: string;
-  scanned_dirs: number;
-  files_count: number;
-  bytes_total: number;
-};
-
-export type SizeDoneEvent = {
-  seq: number;
-  type: 'done';
-  status: 'success' | 'cancelled' | 'failed';
-  scanned_dirs: number;
-  files_count: number;
-  bytes_total: number;
-  error?: string;
-};
-
-export type SizeEvent = SizeProgressEvent | SizeDoneEvent;
-
-export type RemoteSummary = {
-  name: string;
-  type: 'b2' | 'drive' | 'smb' | 'crypt' | string;
-  source: string;
-  description: string;
-};
-
-export type RemoteConfigExample = {
-  value: string;
-  help: string;
-};
-
-export type RemoteConfigField = {
-  name: string;
-  type: string;
-  required: boolean;
-  advanced: boolean;
-  is_password: boolean;
-  sensitive: boolean;
-  exclusive: boolean;
-  default: string;
-  help: string;
-  examples: RemoteConfigExample[];
-  value?: string;
-};
-
-export type RemoteConfigSchema = {
-  type: string;
-  description: string;
-  fields: RemoteConfigField[];
-};
-
-export type RemoteConfigView = {
-  name: string;
-  type: string;
-  fields: RemoteConfigField[];
-};
-
-export type ConfigSessionQuestion = {
-  state: string;
-  option: {
-    Name?: string;
-    Help?: string;
-    Default?: unknown;
-    Examples?: Array<{ Value: string; Help: string }>;
-    Required?: boolean;
-    IsPassword?: boolean;
-    Type?: string;
-    Exclusive?: boolean;
-  };
-  error: string;
-};
-
-export type ConfigSessionResponse = {
-  done: boolean;
-  question: ConfigSessionQuestion | null;
-};
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000/api';
-const DEFAULT_TIMEOUT_MS = 45000;
-
-async function json<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
-  try {
-    const res = await fetch(input, { ...init, signal: controller.signal });
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    return res.json() as Promise<T>;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+export type {
+  ConfigSessionQuestion,
+  ConfigSessionResponse,
+  Entry,
+  Job,
+  RemoteConfigField,
+  RemoteConfigSchema,
+  RemoteConfigView,
+  RemoteSummary,
+  SearchDoneEvent,
+  SearchEvent,
+  SearchProgressEvent,
+  SearchResultEvent,
+  SizeDoneEvent,
+  SizeEvent,
+  SizeProgressEvent,
+} from '../../../shared/src/types';
 
 export const api = {
-  health: () => json<{ ok: boolean }>(`${API_BASE}/health`),
-  remotes: () => json<{ remotes: string[] }>(`${API_BASE}/remotes`),
-  list: (remotePath: string) => json<{ items: Entry[] }>(`${API_BASE}/list?remote_path=${encodeURIComponent(remotePath)}&recursive=false`),
+  health: () => window.electronAPI.health(),
+  remotes: () => window.electronAPI.remotes(),
+  list: (remotePath: string) => window.electronAPI.list(remotePath, false),
   fileContentUrl: (remotePath: string, disposition: 'inline' | 'attachment' = 'inline') =>
-    `${API_BASE}/files/content?remote_path=${encodeURIComponent(remotePath)}&disposition=${disposition}`,
+    window.electronAPI.fileContentUrl(remotePath, disposition),
   startSearch: (payload: { root_path: string; filename_query: string; min_size_mb: number | null; search_mode?: 'standard' | 'empty_dirs' }) =>
-    json<{ search_id: string }>(`${API_BASE}/searches`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  searchEvents: (searchId: string, afterSeq: number) =>
-    json<{ events: SearchEvent[]; done: boolean; next_seq: number }>(
-      `${API_BASE}/searches/${encodeURIComponent(searchId)}/events?after_seq=${afterSeq}`
-    ),
-  cancelSearch: (searchId: string) =>
-    json<{ ok: boolean }>(`${API_BASE}/searches/${encodeURIComponent(searchId)}/cancel`, {
-      method: 'POST',
-    }),
-  startSize: (payload: { root_path: string }) =>
-    json<{ size_id: string }>(`${API_BASE}/sizes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  sizeEvents: (sizeId: string, afterSeq: number) =>
-    json<{ events: SizeEvent[]; done: boolean; next_seq: number }>(
-      `${API_BASE}/sizes/${encodeURIComponent(sizeId)}/events?after_seq=${afterSeq}`
-    ),
-  cancelSize: (sizeId: string) =>
-    json<{ ok: boolean }>(`${API_BASE}/sizes/${encodeURIComponent(sizeId)}/cancel`, {
-      method: 'POST',
-    }),
-  rename: (sourcePath: string, newName: string) =>
-    json<{ ok: boolean; updated_path: string }>(`${API_BASE}/paths/rename`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_path: sourcePath, new_name: newName }),
-    }),
-  jobs: () => json<{ jobs: Job[] }>(`${API_BASE}/jobs`),
-  job: (jobId: string) => json<Job>(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`),
-  copy: (sources: string[], destination_dir: string) =>
-    json<Job>(`${API_BASE}/jobs/copy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sources, destination_dir, operation: 'copy', fallback_mode: 'auto', verify_mode: 'strict' }),
-    }),
-  move: (sources: string[], destination_dir: string) =>
-    json<Job>(`${API_BASE}/jobs/move`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sources, destination_dir, operation: 'move', fallback_mode: 'auto', verify_mode: 'strict' }),
-    }),
-  del: (sources: string[]) =>
-    json<Job>(`${API_BASE}/jobs/delete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sources }),
-    }),
-  cancel: (job_id: string) =>
-    json<Job>(`${API_BASE}/jobs/cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_id }),
-    }),
-  settings: () => json<{ staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: string }>(`${API_BASE}/settings`),
+    window.electronAPI.startSearch(payload),
+  searchEvents: (searchId: string, afterSeq: number) => window.electronAPI.searchEvents(searchId, afterSeq),
+  cancelSearch: (searchId: string) => window.electronAPI.cancelSearch(searchId),
+  startSize: (payload: { root_path: string }) => window.electronAPI.startSize(payload),
+  sizeEvents: (sizeId: string, afterSeq: number) => window.electronAPI.sizeEvents(sizeId, afterSeq),
+  cancelSize: (sizeId: string) => window.electronAPI.cancelSize(sizeId),
+  rename: (sourcePath: string, newName: string) => window.electronAPI.rename(sourcePath, newName),
+  jobs: () => window.electronAPI.jobs(),
+  job: (jobId: string) => window.electronAPI.job(jobId),
+  copy: (sources: string[], destination_dir: string) => window.electronAPI.copy(sources, destination_dir),
+  move: (sources: string[], destination_dir: string) => window.electronAPI.move(sources, destination_dir),
+  del: (sources: string[]) => window.electronAPI.del(sources),
+  cancel: (job_id: string) => window.electronAPI.cancel(job_id),
+  settings: () => window.electronAPI.settings(),
   saveSettings: (payload: { staging_path: string; staging_cap_bytes: number; concurrency: number; verify_mode: 'strict' }) =>
-    json(`${API_BASE}/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  remoteTypes: () => json<{ types: RemoteConfigSchema[] }>(`${API_BASE}/remote-types`),
-  remotesDetails: () => json<{ remotes: RemoteSummary[] }>(`${API_BASE}/remotes/details`),
-  remoteConfig: (name: string) => json<RemoteConfigView>(`${API_BASE}/remotes/${encodeURIComponent(name)}/config`),
-  createRemote: (payload: { name: string; type: string; values: Record<string, unknown> }) =>
-    json<{ ok: boolean }>(`${API_BASE}/remotes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  updateRemote: (name: string, payload: { values: Record<string, unknown> }) =>
-    json<{ ok: boolean }>(`${API_BASE}/remotes/${encodeURIComponent(name)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  deleteRemote: (name: string) =>
-    json<{ ok: boolean }>(`${API_BASE}/remotes/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    }),
+    window.electronAPI.saveSettings(payload),
+  remoteTypes: () => window.electronAPI.remoteTypes(),
+  remotesDetails: () => window.electronAPI.remotesDetails(),
+  remoteConfig: (name: string) => window.electronAPI.remoteConfig(name),
+  createRemote: (payload: { name: string; type: string; values: Record<string, unknown> }) => window.electronAPI.createRemote(payload),
+  updateRemote: (name: string, payload: { values: Record<string, unknown> }) => window.electronAPI.updateRemote(name, payload),
+  deleteRemote: (name: string) => window.electronAPI.deleteRemote(name),
   startRemoteConfigSession: (payload: {
     operation: 'create' | 'update';
     name: string;
     type?: string;
     values: Record<string, unknown>;
     ask_all?: boolean;
-  }) =>
-    json<ConfigSessionResponse>(`${API_BASE}/remotes/config-session/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
+  }) => window.electronAPI.startRemoteConfigSession(payload),
   continueRemoteConfigSession: (payload: {
     operation: 'create' | 'update';
     name: string;
@@ -261,10 +60,5 @@ export const api = {
     state: string;
     result: string;
     ask_all?: boolean;
-  }) =>
-    json<ConfigSessionResponse>(`${API_BASE}/remotes/config-session/continue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
+  }) => window.electronAPI.continueRemoteConfigSession(payload),
 };

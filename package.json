@@ -1,0 +1,72 @@
+{
+  "name": "rclone-hub",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/electron/main.js",
+  "workspaces": [
+    "frontend",
+    "electron",
+    "shared"
+  ],
+  "scripts": {
+    "frontend:dev": "npm run dev --workspace frontend",
+    "frontend:build": "npm run build --workspace frontend",
+    "frontend:test": "npm run test --workspace frontend",
+    "electron:build": "tsc -p electron/tsconfig.json",
+    "electron:watch": "tsc -p electron/tsconfig.json --watch --preserveWatchOutput",
+    "electron:launch": "wait-on tcp:127.0.0.1:5173 file:dist-electron/electron/main.js && cross-env NODE_ENV=development electron .",
+    "electron:dev": "concurrently -k \"npm run electron:watch\" \"npm run frontend:dev\" \"npm run electron:launch\"",
+    "electron:test": "vitest run --config electron/vitest.config.ts",
+    "build": "npm run frontend:build && npm run electron:build",
+    "test": "npm run frontend:test && npm run electron:test",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "postinstall": "electron-rebuild -w better-sqlite3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "electron": "^38.3.0",
+    "picomatch": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.rclone-hub.app",
+    "productName": "Rclone Hub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}

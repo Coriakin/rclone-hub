@@ -1,6 +1,6 @@
 # rclone-hub
 
-Manage your `rclone` remotes from a clean local web app built for browsing and moving files confidently.
+Manage your `rclone` remotes from a clean local desktop app built for browsing and moving files confidently.
 
 rclone-hub gives you a visual, multi-pane workspace for exploring remotes, searching across directories, and running transfers without living in terminal commands all day.
 
@@ -13,8 +13,8 @@ rclone-hub gives you a visual, multi-pane workspace for exploring remotes, searc
 - Right-click folder size calculation with live progress, cancel support, and per-pane cached results shown in the Size column.
 - Transfer-focused workflow designed to make file moves clear and predictable.
 - In-app preview for remote `jpg`/`jpeg`/`png`/`gif` files with an indeterminate loading bar and optional download action.
-- Local-first web UI that runs on your machine.
-- Cross-platform setup using a single startup script.
+- Local-first Electron app that runs on your machine.
+- Cross-platform desktop packaging with Electron.
 - Built around `rclone` remotes so you can keep using the storage you already have.
 
 ## Quick Start
@@ -24,21 +24,25 @@ Clone or open this repo, then run:
 ```bash
 git clone https://github.com/andreas-io/rclone-hub.git
 cd rclone-hub
-./scripts/dev.sh
+npm install
+npm run electron:dev
 ```
 
-Then open the local URL shown in your terminal (typically `http://127.0.0.1:5173`).
+That starts the Vite renderer, watches the Electron TypeScript code, and launches the desktop app.
 
-`./scripts/dev.sh` automatically bootstraps backend packaging tools (`pip`, `setuptools`, `wheel`) so editable installs work on older system Python virtualenv defaults.
-
-If backend setup failed previously, rerun `./scripts/dev.sh`. If it still fails, recreate the backend virtualenv and rerun:
+For a production build:
 
 ```bash
-rm -rf backend/.venv
-./scripts/dev.sh
+npm run build
 ```
 
-For advanced defaults (for example fixed ports), you can use the root `.env` file. See the docs section below for deeper setup details.
+For packaged desktop binaries:
+
+```bash
+npm run dist
+```
+
+The app still requires `rclone` to be installed and available on your `PATH`.
 
 ## Who It's For
 
@@ -50,7 +54,7 @@ For advanced defaults (for example fixed ports), you can use the root `.env` fil
 
 - `docs/architecture.md` for system design details.
 - `docs/transfer-safety.md` for transfer behavior and safety notes.
-- `docs/api.md` for backend API details.
+- `docs/api.md` for the Electron IPC surface and renderer contract.
 
 ## Current Status
 
